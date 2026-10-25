@@ -1,0 +1,166 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"  xsi:schemaLocation="http://www.blizzard.com/wow/ui/ ..\..\..\Interface\FrameXML\UI.xsd">
+    <!--CircleButton-->
+	<Button name="DreamSmallButtonTemplate" virtual="true">
+    	<Size x="20" y="20"/>
+    	<Anchors>
+    		<Anchor point="CENTER">
+    			<Offset x="0" y="0" />
+    		</Anchor>
+    	</Anchors>
+    	<Layers>
+    		<Layer level="OVERLAY">
+    			<Texture name="$parentRollTexture">
+    				<Size x="20" y="20"/>
+    				<Anchors>
+    					<Anchor point="CENTER">
+    						<Offset x="0" y="0"/>
+    					</Anchor>
+    				</Anchors>
+    			</Texture>
+    		</Layer>
+    		<Layer level="OVERLAY">
+    			<Texture file="Interface\Minimap\UI-Minimap-Ping-Expand">
+    				<Size x="48" y="48"/>
+    				<Anchors>
+    					<Anchor point="CENTER">
+    						<Offset x="0" y="0"/>
+    					</Anchor>
+    				</Anchors>
+    			</Texture>
+    		</Layer>
+    		<Layer level="ARTWORK">
+    			<Texture name="$parentTexture">
+    				<Size x="20" y="20"/>
+    				<Anchors>
+    					<Anchor point="CENTER">
+    						<Offset x="0" y="0"/>
+    					</Anchor>
+    				</Anchors>
+    			</Texture>
+    			<FontString name="$parentCount" inherits="TextStatusBarText">
+    				<Anchors>
+    					<Anchor point="CENTER">
+    						<Offset x="0" y="0"/>
+    					</Anchor>
+    				</Anchors>
+    			</FontString>
+    		</Layer>
+    	</Layers>
+    </Button>
+	<Button name="DreamRingSmButtonTemplate" virtual="true">
+    	<Anchors>
+    		<Anchor point="CENTER">
+    			<Offset x="0" y="0" />
+    		</Anchor>
+    	</Anchors>
+    	<Layers>
+    		<Layer>
+    			<Texture name="$parentTexture" file="Interface\Minimap\UI-Minimap-Ping-Expand">
+    				<Size x="40" y="40"/>
+    				<Anchors>
+    					<Anchor point="CENTER">
+    						<Offset x="0" y="0"/>
+    					</Anchor>
+    				</Anchors>
+    			</Texture>
+    		</Layer>
+    	</Layers>
+    </Button>
+	<Button name="DreamZcRingSmButtonTemplate" virtual="true">
+    	<Anchors>
+    		<Anchor point="CENTER">
+    			<Offset x="0" y="0" />
+    		</Anchor>
+    	</Anchors>
+    	<Layers>
+    		<Layer>
+    			<Texture name="$parentTexture" file="">
+    				<Size x="80" y="80"/>
+    				<Anchors>
+    					<Anchor point="CENTER">
+    						<Offset x="0" y="0"/>
+    					</Anchor>
+    				</Anchors>
+    			</Texture>
+    		</Layer>
+    	</Layers>
+    </Button>
+	<Button name="DreamMagicTemplate" virtual="true">
+		<Size>
+			<AbsDimension x="72" y="72"/>
+		</Size>
+		<Layers>
+			<Layer level="BACKGROUND">
+				<Texture name="$parentSetting" file="Interface\Spellbook\UI-GlyphFrame">
+					<Size x="80" y="80"/>
+					<Anchors>
+						<Anchor point="CENTER">
+							<Offset x="0" y="0"/>
+						</Anchor>
+					</Anchors>
+					<TexCoords left="0.765625" right="0.927734375" top="0.15625" bottom="0.31640625"/>
+				</Texture>
+			</Layer>
+			<Layer level="BORDER">
+				<Texture name="$parentHighlight" file="Interface\Spellbook\UI-GlyphFrame" hidden="true" alphaMode="ADD">
+					<Size x="80" y="80"/>
+					<Anchors>
+						<Anchor point="CENTER">
+							<Offset x="0" y="0"/>
+						</Anchor>
+					</Anchors>
+					<TexCoords left="0.765625" right="0.927734375" top="0.15625" bottom="0.31640625"/>
+					<Color r="1" g="1" b="1" a=".25"/>
+				</Texture>
+				<Texture name="$parentBackground" file="Interface\Spellbook\UI-GlyphFrame">
+					<Size x="64" y="64"/>
+					<Anchors>
+						<Anchor point="CENTER">
+							<Offset x="0" y="0"/>
+						</Anchor>
+					</Anchors>
+					<TexCoords left="0.78125" right="0.91015625" top="0.69921875" bottom="0.828125"/>
+				</Texture>
+			</Layer>
+			<Layer level="OVERLAY">
+				<Texture name="$parentRing" file="Interface\Spellbook\UI-GlyphFrame">
+					<Size x="62" y="62"/>
+					<Anchors>
+						<Anchor point="CENTER">
+							<Offset x="0" y="1"/>
+						</Anchor>
+					</Anchors>
+					<TexCoords left="0.787109375" right="0.908203125" top="0.033203125" bottom="0.154296875"/>
+				</Texture>
+				<Texture name="$parentShine" file="Interface\Spellbook\UI-GlyphFrame">
+					<Size x="16" y="16"/>
+					<Anchors>
+						<Anchor point="CENTER">
+							<Offset x="-9" y="12"/>
+						</Anchor>
+					</Anchors>
+					<TexCoords left="0.9609375" right="1" top="0.921875" bottom="0.9609375"/>
+				</Texture>
+			</Layer>
+		</Layers>
+	</Button>
+	<Button name="DreamPicGuideSmButtonTemplate" virtual="true">
+    	<Anchors>
+    		<Anchor point="CENTER">
+    			<Offset x="0" y="0" />
+    		</Anchor>
+    	</Anchors>
+    	<Layers>
+    		<Layer>
+    			<Texture name="$parentTexture" file="Interface\Minimap\UI-Minimap-Ping-Expand">
+    				<Size x="28" y="28"/>
+    				<Anchors>
+    					<Anchor point="CENTER">
+    						<Offset x="0" y="0"/>
+    					</Anchor>
+    				</Anchors>
+    			</Texture>
+    		</Layer>
+    	</Layers>
+    </Button>
+</Ui>
