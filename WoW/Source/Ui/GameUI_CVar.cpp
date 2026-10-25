@@ -42,6 +42,10 @@ CVar* g_cvAutoInteract;
 // STATIC: 0x00BD08F8
 CVar* g_autoStandCVar;
 
+// 335XS: automatically reel in a ready fishing bobber. Casting remains a
+// manual action; this only reacts to the server's bobber animation packet.
+CVar* g_autoFishingCVar;
+
 // STATIC: 0x00BD08FC
 CVar* g_autoDismountCVar;
 
@@ -457,6 +461,7 @@ void CGGameUI::RegisterGameCVars() {
     g_deselectOnClickCVar = CVar::Register("deselectOnClick", "Clear the target when clicking on terrain", 0x10, "1", nullptr, CATEGORY_GAME, false, nullptr, false);
     g_cvAutoInteract = CVar::Register("autoInteract", "Toggles auto-move to interact target", 0x10, s_locale == 1 ? "1" : "0", AutoInteractStateChangedCallback, CATEGORY_GAME, false, nullptr, false);
     g_autoStandCVar = CVar::Register("autoStand", "Automatically stand when needed", 0x10, "1", nullptr, CATEGORY_GAME, false, nullptr, false);
+    g_autoFishingCVar = CVar::Register("autoFishing", "Automatically reel in a ready fishing bobber", 0x10, "1", nullptr, CATEGORY_GAME, false, nullptr, false);
     g_autoDismountCVar = CVar::Register("autoDismount", "Automatically dismount when needed", 0x10, "1", nullptr, CATEGORY_GAME, false, nullptr, false);
     g_autoDismountFlyingCVar = CVar::Register("autoDismountFlying", "If enabled, your character will automatically dismount before casting while flying", 0x10, "0", nullptr, CATEGORY_GAME, false, nullptr, false);
     g_autoUnshiftCVar = CVar::Register("autoUnshift", "Automatically leave shapeshift form when needed", 0x10, "1", nullptr, CATEGORY_GAME, false, nullptr, false);

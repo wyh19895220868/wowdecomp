@@ -88,6 +88,7 @@ extern CVar* g_useUiScaleCVar;
 extern CVar* g_rotateMinimapCVar;
 extern CVar* g_cvAutoInteract;
 extern CVar* g_autoStandCVar;
+extern CVar* g_autoFishingCVar;
 
 void SignalEvent_EVENT_PARTY_INVITE_REQUEST(const char* name);
 extern CVar* g_unitHighlightsCVar;

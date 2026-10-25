@@ -1683,6 +1683,21 @@ int32_t Packet_SMSG_GAMEOBJECT_CUSTOM_ANIM(void* param, NETMESSAGE msgId, uint32
 
     if (object && anim < 4) {
         object->PlayCustomAnim(anim);
+
+        // Fishing bobbers (game object type 17) send this packet when the
+        // server marks the float ready. Reuse the normal interaction path so
+        // loot, auto-loot, and server-side fishing checks remain unchanged.
+        // Do not cast again here: the next fishing cast remains manual.
+        static WOWGUID lastFishingBobber;
+        static uint32_t lastFishingAnimTime = 0;
+
+        if (g_autoFishingCVar && g_autoFishingCVar->m_intValue && object->m_gameObject->m_typeID == 17 &&
+            object->m_gameObject->m_createdBy == ClntObjMgrGetActivePlayer() &&
+            (lastFishingBobber.m_guid != guid.m_guid || static_cast<int32_t>(time - lastFishingAnimTime) >= 1000)) {
+            lastFishingBobber = guid;
+            lastFishingAnimTime = time;
+            object->OnRightClick();
+        }
     }
 
     return 1;
