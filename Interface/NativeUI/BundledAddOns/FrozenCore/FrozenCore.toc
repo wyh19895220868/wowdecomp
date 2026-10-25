@@ -1,0 +1,7 @@
+## Interface: 30300
+## Title: FrozenCore Equipment Cache
+## Notes: Persistent equipment cache for custom item data
+## OptionalDeps: ____Function
+## SavedVariables: FrozenData
+
+FrozenCore.lua
