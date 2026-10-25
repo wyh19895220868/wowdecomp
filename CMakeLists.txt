@@ -130,3 +130,20 @@ foreach (target Wow WowClient MapViewer M2Viewer GxTest MpqTest BlpTest DbcTest 
         target_sources(${target} PRIVATE ${CMAKE_SOURCE_DIR}/waystone.rc)
     endif ()
 endforeach ()
+
+# Ship the editable unit-frame layer beside either client executable.
+add_custom_target(WowNativeUIResources
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_SOURCE_DIR}/bin/Win/Interface/NativeUI"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_SOURCE_DIR}/Interface/NativeUI/NativeUI.lua"
+        "${CMAKE_SOURCE_DIR}/bin/Win/Interface/NativeUI/NativeUI.lua"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_SOURCE_DIR}/Interface/NativeUI/BundledAddOns"
+        "${CMAKE_SOURCE_DIR}/bin/Win/Interface/NativeUI/BundledAddOns"
+    VERBATIM
+)
+foreach (target Wow WowClient)
+    if (TARGET ${target})
+        add_dependencies(${target} WowNativeUIResources)
+    endif ()
+endforeach ()
