@@ -1,0 +1,10 @@
+## Interface: 30300
+## Title: 装备锻造
+## Title-zhCN: 装备锻造
+## Notes: 独立的强化、成长与符文操作界面
+## Notes-zhCN: 独立的强化、成长与符文操作界面
+## Author: 小赛
+## Version: 1.1.0
+## SavedVariables: ItemForgeUIDB
+
+ItemForgeUI.lua
