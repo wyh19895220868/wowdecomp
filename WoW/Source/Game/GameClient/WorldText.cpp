@@ -32,13 +32,6 @@
 #include "WoW/Source/UIUtil/SmartScreenRect.h"
 #include "WoW/Source/Ui/WorldFrame.h"
 
-// STATIC: 0x00A41618
-static float s_critHeightCurve[3][4] = {
-    { 0.0f, 0.1f, 0.1f, 2.0f },
-    { 0.1f, 0.2f, 2.0f, 1.0f },
-    { 0.2f, 1.0f, 1.0f, 1.0f },
-};
-
 // STATIC: 0x00AF4748
 static WORLDTEXTTYPE s_worldTextTypes[NUM_WORLDTEXTTYPES] = {
     { 2.0f, 150, 760, 1500, 0.018333333f, 0.018333333f, CImVector(0xFF, 0xFF, 0xFF, 0xFF) },
@@ -146,11 +139,15 @@ void WORLDTEXTSTRING::RecreateString() {
     DDCToNDC(s_shadowOffset.x, s_shadowOffset.y, &shadow.x, &shadow.y);
 
     float extent;
-    GxuFontGetTextExtent(font, this->m_text, SStrLen(this->m_text), fontHeight, &extent, shadow.x, 1.0f, 0.0f, 0);
-    float textHeight = GxuFontGetWrappedTextHeight(font, this->m_text, fontHeight, extent, shadow, 1.0f, 0.0f, 0);
+    // EGxStringFlags_FixedSize (0x4) makes the font backend use its native
+    // one-pixel height. That removes fractional resampling while retaining
+    // the stock position and alpha animation for normal and critical hits.
+    constexpr uint32_t kFixedPixelFont = 0x4;
+    GxuFontGetTextExtent(font, this->m_text, SStrLen(this->m_text), fontHeight, &extent, shadow.x, 1.0f, 0.0f, kFixedPixelFont);
+    float textHeight = GxuFontGetWrappedTextHeight(font, this->m_text, fontHeight, extent, shadow, 1.0f, 0.0f, kFixedPixelFont);
 
     C3Vector position(0.0f, 0.0f, 1.0f);
-    GxuFontCreateString(font, this->m_text, fontHeight, position, extent, textHeight, 0.0f, this->m_string, GxVJ_Bottom, GxHJ_Left, 0, this->m_color, 0.0f, 1.0f);
+    GxuFontCreateString(font, this->m_text, fontHeight, position, extent, textHeight, 0.0f, this->m_string, GxVJ_Bottom, GxHJ_Left, kFixedPixelFont, this->m_color, 0.0f, 1.0f);
     GxuFontAddToBatch(s_worldTextBatch, this->m_string);
 
     this->m_halfWidth = extent * 0.5f;
@@ -269,31 +266,13 @@ static void WorldTextSetupOrthoProjection() {
 // VERIFY: d685ec68 manual
 // OFFSET: 0x007E6CC0
 void WORLDTEXTSTRING::CalculateTextHeight(uint32_t elapsed) {
-    const WORLDTEXTTYPE& type = s_worldTextTypes[this->m_type];
-    float progress = static_cast<float>(elapsed) / static_cast<float>(type.m_duration);
-    float height;
+    (void)elapsed;
 
-    if (this->m_type == WT_CRIT || this->m_type == WT_CRIT_HEAL) {
-        float scale = 1.0f;
-
-        for (uint32_t i = 0; i < 3; i++) {
-            if (s_critHeightCurve[i][0] <= progress && s_critHeightCurve[i][1] > progress) {
-                scale = (progress - s_critHeightCurve[i][0]) / (s_critHeightCurve[i][1] - s_critHeightCurve[i][0]) * (s_critHeightCurve[i][3] - s_critHeightCurve[i][2]) + s_critHeightCurve[i][2];
-                break;
-            }
-        }
-
-        height = scale * type.m_endHeight;
-    } else {
-        height = progress * (type.m_endHeight - type.m_startHeight) + type.m_startHeight;
-    }
-
-    if (height <= 0.001f) {
-        height = 0.001f;
-    }
-
-    if (this->m_fontHeight != height) {
-        this->m_fontHeight = height;
+    // Keep the combat text at a fixed pixel height. The previous code changed
+    // the requested height every frame (and enlarged crits), forcing repeated
+    // glyph regeneration and fractional texture sampling.
+    if (this->m_fontHeight < 0.0f) {
+        this->m_fontHeight = 0.018333333f;
         this->RecreateString();
     }
 }

@@ -5,6 +5,7 @@
 #include <float.h>
 #include "Engine/Source/Storm/H/storm.h"
 #include "WoW/Source/Client.h"
+#include "WoW/Source/WinDpi.h"
 
 // STATIC: 0x00B311E8
 static LPVOID lpFiber;
@@ -26,6 +27,7 @@ extern "C" int start() {
 
 // OFFSET: 0x00406D70
 int main() {
+    SetWowProcessDpiAwareness();
     _set_invalid_parameter_handler(InvalidParameterHandler);
     _clearfp();
     _control87(0x9001F & ~(_MCW_PC | _MCW_IC), _MCW_DN | _MCW_EM | _MCW_RC);
