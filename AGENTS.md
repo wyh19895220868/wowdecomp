@@ -3,10 +3,18 @@
 ## 项目范围
 - 本文件适用于新客户端仓库全部目录；更深层的 AGENTS.md 可补充局部规则。
 - 主修改目录：`E:\wowdecomp\wowdecomp`。旧客户端 `E:\wowdecomp\wowdecomp-main` 默认仅用于对照，迁移时按功能核对差异，禁止整目录覆盖。
-- 配套服务端唯一指定源码目录：`E:\AA\azerothcore-wotlk-master`。所有客户端功能、数据和通讯设计均服务于该服务端。
+- 配套新服务端唯一指定源码目录：`E:\wowdecomp\xs-wow\azerothcore-wotlk-xs`。所有客户端功能、数据和通讯设计均以对接该新服务端为目标。
 - 实际运行客户端：`D:\wow_cn_3.3.5`；插件及界面资源目录：`D:\wow_cn_3.3.5\Interface`。部署前备份本次覆盖的文件，并检查客户端进程。
 - 当前客户端基线为 WoW 3.3.5a / build 12340，C++17、Windows、CMake，主目标 x64；保留 Win32 兼容和原版结构布局核对能力。
 - 先读 `docs/项目架构.md` 和本次涉及模块的实现；文档描述不能代替实际代码和运行证据。
+
+## 服务端迁移约定
+- 服务端完整规则见 `E:\wowdecomp\xs-wow\azerothcore-wotlk-xs\AGENTS.md`；进入服务端仓库前必须阅读。
+- 旧服务端 `E:\AA\azerothcore-wotlk-master` 和原始项目 `E:\AA\NAz-xszx1` 默认只读，按功能移植到新服务端，禁止整目录覆盖。
+- 机器人仅使用 `E:\wowdecomp\xs-wow\mod-playerbots-xs`，不移植或启用旧机器人。
+- 服务端加壳工具：`E:\AA\UPX`；后续构建使用指定工具目录 `E:\CMake3.25.3`、`E:\boost_1_78_0`、`E:\mysql-8.0.12-winx64`、`E:\OpenSSL-Win64`、`E:\Vs2022-IDE`，具体兼容性和配置按服务端规则核实。
+- 每次服务端修改都必须在功能子分支提交并推送到 `https://github.com/wyh19895220868/azerothcore-wotlk-xs`，禁止直接提交或推送主分支。客户端文件仍在下方指定的客户端仓库中独立记录，不能误推到服务端仓库。
+- 架构文档中旧服务端路径属于历史说明；与本文件冲突时，以本文件指定的新服务端路径为准。
 
 ## 功能边界与确认
 - 每次只处理用户指定的功能及其直接必要实现，保持无关功能和用户已有修改不变。
