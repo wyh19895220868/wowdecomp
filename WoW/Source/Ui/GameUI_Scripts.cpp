@@ -4159,7 +4159,7 @@ static int32_t Script_GetItemIcon(lua_State* L) {
         itemId = GetItemIDByName(lua_tolstring(L, 1, nullptr));
     }
 
-    ItemRec* item = g_itemDB.GetRecord(itemId);
+    ItemRec* item = CGItem_GetItemRec(itemId);
 
     if (!item) {
         return 0;
@@ -5719,7 +5719,7 @@ static int32_t Script_PickupItem(lua_State* L) {
         itemId = GetItemIDByName(lua_tolstring(L, 1, nullptr));
     }
 
-    ItemRec* rec = g_itemDB.GetRecord(itemId);
+    ItemRec* rec = CGItem_GetItemRec(itemId);
     int32_t displayId = rec ? rec->m_displayInfoID : 0;
     CGGameUI::SetCursorVirtualItem(itemId, displayId, 0, UICURSOR_ACTIONBAR, 0);
     return 0;

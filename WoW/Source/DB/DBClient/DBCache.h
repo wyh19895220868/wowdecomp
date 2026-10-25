@@ -72,7 +72,7 @@ class DBCache : public Blizzard::Using::GlobalUse {
     DBCache(uint32_t signature, const char* fileName, uint32_t queryOpcode, uint32_t multipleQueryOpcode, bool sendRequester, bool enabled, uint32_t queriesPerMinute);
     ~DBCache();
     void AddItem(T* item, TKey key);
-    void AddItems(CDataStore* msg, bool single);
+    void AddItems(CDataStore* msg, bool single, void (*onLoaded)(TKey key, const T& rec, void* param) = nullptr, void* param = nullptr);
     void CancelCallback(TKey key, void (*callback)(int32_t id, const WOWGUID& guid, void* param, bool success), void* param);
     void Clear();
     void ClearPending();
@@ -501,7 +501,7 @@ void DBCache<T, TKey, THashKey>::VerifyAndUpdateVersion(uint32_t version) {
 // VERIFY: 27b57ae6 manual
 // OFFSET: [0x0067B840<CreatureStats_C, int, HASHKEY_INT>, 0x0067BEE0<GameObjectStats_C, int, HASHKEY_INT>, 0x0067CBD0<ItemStats_C, int, HASHKEY_INT>, 0x0067D270<NPCText, int, HASHKEY_INT>, 0x0067E570<PageTextCache_C, int, HASHKEY_INT>, 0x0067C570<ItemNameCache_C, int, HASHKEY_INT>]
 template <class T, class TKey, class THashKey>
-void DBCache<T, TKey, THashKey>::AddItems(CDataStore* msg, bool single) {
+void DBCache<T, TKey, THashKey>::AddItems(CDataStore* msg, bool single, void (*onLoaded)(TKey key, const T& rec, void* param), void* param) {
     uint8_t count;
 
     if (single) {
@@ -550,6 +550,10 @@ void DBCache<T, TKey, THashKey>::AddItems(CDataStore* msg, bool single) {
             hash->m_record.Unpack(msg);
             hash->m_loaded = true;
             hash->m_id = key;
+
+            if (onLoaded) {
+                onLoaded(key, hash->m_record, param);
+            }
 
             for (DBCACHECALLBACK* node = hash->m_callbacks.Head(); node;) {
                 DBCACHECALLBACK* next = hash->m_callbacks.Next(node);

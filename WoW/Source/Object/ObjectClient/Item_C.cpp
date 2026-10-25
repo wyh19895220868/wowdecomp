@@ -59,6 +59,48 @@ static TSHashTable<INVENTORYART, HASHKEY_NONE> s_inventoryArt;
 // STATIC: 0x00CA1168
 static TSHashTable<ITEMBYNAME, HASHKEY_UTF8I> s_itemByName;
 
+// Copy the item static data pushed by the server into the local Item.dbc
+// memory table. An ID that already exists locally is left untouched (local
+// data wins); missing IDs are injected with the 8 ItemRec columns mapped.
+void CGItem_InjectItemRecFromStats(int32_t itemId, const ItemStats_C& stats) {
+    if (itemId <= 0 || g_itemDB.GetRecord(itemId)) {
+        return;
+    }
+
+    ItemRec rec;
+    rec.m_id = itemId;
+    rec.m_classID = static_cast<int32_t>(stats.m_class);
+    rec.m_subclassID = static_cast<int32_t>(stats.m_subClass);
+    rec.m_soundOverrideSubclassID = static_cast<int32_t>(stats.m_soundOverrideSubclass);
+    rec.m_material = static_cast<int32_t>(stats.m_material);
+    rec.m_displayInfoID = static_cast<int32_t>(stats.m_displayId);
+    rec.m_inventoryType = static_cast<int32_t>(stats.m_inventoryType);
+    rec.m_sheatheType = static_cast<int32_t>(stats.m_sheatheType);
+
+    g_itemDB.InjectRecord(itemId, rec);
+}
+
+// Resolve an item through the local DBC first and the server-backed cache as a
+// fallback. This keeps UI code working for custom items when Item.dbc has no
+// row for the item yet.
+ItemRec* CGItem_GetItemRec(int32_t itemId) {
+    ItemRec* rec = g_itemDB.GetRecord(itemId);
+
+    if (rec) {
+        return rec;
+    }
+
+    WOWGUID requester = WOWGUID();
+    ItemStats_C* stats = g_itemDBCache.GetRecord(itemId, requester, nullptr, nullptr, false);
+
+    if (stats) {
+        CGItem_InjectItemRecFromStats(itemId, *stats);
+        rec = g_itemDB.GetRecord(itemId);
+    }
+
+    return rec;
+}
+
 // VERIFY: 1390e3e9 manual
 // OFFSET: 0x00707720
 static int32_t OnUpdateStackCount(WOWGUID guid, uint32_t fieldOffset, uint32_t fieldSize, const void* oldValue, void* param) {
@@ -89,7 +131,7 @@ static int32_t OnUpdateStackCount(WOWGUID guid, uint32_t fieldOffset, uint32_t f
             CGCurrencyTypes::EnterWorld();
         }
 
-        ItemRec* rec = g_itemDB.GetRecord(item->m_obj->m_entryID);
+        ItemRec* rec = CGItem_GetItemRec(item->m_obj->m_entryID);
 
         if (rec && rec->m_inventoryType == 24) {
             CGCharacterInfo::UpdateInventoryAlerts();
@@ -291,22 +333,22 @@ CGItem_C::CGItem_C(uint32_t time, const CClientObjCreate& create) : CGObject_C(t
 
     ClntObjMgrHideObject(this->m_obj->m_guid);
 
-    ItemRec* rec = g_itemDB.GetRecord(this->m_obj->m_entryID);
+    ItemRec* rec = CGItem_GetItemRec(this->m_obj->m_entryID);
     this->m_virtualItem.m_classID = rec ? rec->m_classID : 0;
 
-    rec = g_itemDB.GetRecord(this->m_obj->m_entryID);
+    rec = CGItem_GetItemRec(this->m_obj->m_entryID);
     this->m_virtualItem.m_subclassID = rec ? rec->m_subclassID : 0;
 
-    rec = g_itemDB.GetRecord(this->m_obj->m_entryID);
+    rec = CGItem_GetItemRec(this->m_obj->m_entryID);
     this->m_virtualItem.m_material = rec ? rec->m_material : 0;
 
-    rec = g_itemDB.GetRecord(this->m_obj->m_entryID);
+    rec = CGItem_GetItemRec(this->m_obj->m_entryID);
     this->m_virtualItem.m_inventoryType = rec ? rec->m_inventoryType : 0;
 
-    rec = g_itemDB.GetRecord(this->m_obj->m_entryID);
+    rec = CGItem_GetItemRec(this->m_obj->m_entryID);
     this->m_virtualItem.m_sheatheType = rec ? rec->m_sheatheType : 0;
 
-    rec = g_itemDB.GetRecord(this->m_obj->m_entryID);
+    rec = CGItem_GetItemRec(this->m_obj->m_entryID);
     this->m_virtualItem.m_soundOverrideSubclassID = rec ? rec->m_soundOverrideSubclassID : -1;
 
     memset(this->m_enchantmentExpiration, 0, sizeof(this->m_enchantmentExpiration));
@@ -473,7 +515,7 @@ int32_t CGItem_C::GetSelectionHighlightColor(CImVector* color) const {
 // VERIFY: 3f2f878c auto
 // OFFSET: 0x00707220
 uint32_t CGItem_C::GetClassID() const {
-    ItemRec* rec = g_itemDB.GetRecord(this->m_obj->m_entryID);
+    ItemRec* rec = CGItem_GetItemRec(this->m_obj->m_entryID);
 
     return rec ? rec->m_classID : 0;
 }
@@ -481,7 +523,7 @@ uint32_t CGItem_C::GetClassID() const {
 // VERIFY: 955a9609 auto
 // OFFSET: 0x00707250
 uint32_t CGItem_C::GetSubtypeID() const {
-    ItemRec* rec = g_itemDB.GetRecord(this->m_obj->m_entryID);
+    ItemRec* rec = CGItem_GetItemRec(this->m_obj->m_entryID);
 
     return rec ? rec->m_subclassID : 0;
 }
@@ -489,7 +531,7 @@ uint32_t CGItem_C::GetSubtypeID() const {
 // VERIFY: 6c114c7d auto
 // OFFSET: 0x00707280
 uint32_t CGItem_C::GetInventoryType() const {
-    ItemRec* rec = g_itemDB.GetRecord(this->m_obj->m_entryID);
+    ItemRec* rec = CGItem_GetItemRec(this->m_obj->m_entryID);
 
     return rec ? rec->m_inventoryType : 0;
 }
@@ -497,7 +539,7 @@ uint32_t CGItem_C::GetInventoryType() const {
 // VERIFY: b59c1299 auto
 // OFFSET: 0x00707300
 uint32_t CGItem_C::GetDisplayID() const {
-    ItemRec* rec = g_itemDB.GetRecord(this->m_obj->m_entryID);
+    ItemRec* rec = CGItem_GetItemRec(this->m_obj->m_entryID);
 
     return rec ? rec->m_displayInfoID : 0;
 }
@@ -505,7 +547,7 @@ uint32_t CGItem_C::GetDisplayID() const {
 // VERIFY: 8c746859 auto
 // OFFSET: 0x00707330
 uint32_t CGItem_C::GetSheatheType() const {
-    ItemRec* rec = g_itemDB.GetRecord(this->m_obj->m_entryID);
+    ItemRec* rec = CGItem_GetItemRec(this->m_obj->m_entryID);
 
     return rec ? rec->m_sheatheType : 0;
 }
@@ -542,7 +584,7 @@ bool CGItem_C::HasSoulboundEnchant() {
 // VERIFY: a5c81637 auto
 // OFFSET: 0x00707500
 int32_t CGItem_C::GetRandomItemSlot() const {
-    ItemRec* rec = g_itemDB.GetRecord(this->m_obj->m_entryID);
+    ItemRec* rec = CGItem_GetItemRec(this->m_obj->m_entryID);
     uint32_t inventoryType = rec ? rec->m_inventoryType : 0;
 
     switch (inventoryType) {
@@ -1121,7 +1163,7 @@ const char* CGItem_C::GetInventoryArt(int32_t displayId) {
 // VERIFY: 3c4650e1 auto
 // OFFSET: 0x0070AA00
 const char* CGItem_C::GetInventoryArt() const {
-    ItemRec* rec = g_itemDB.GetRecord(this->m_obj->m_entryID);
+    ItemRec* rec = CGItem_GetItemRec(this->m_obj->m_entryID);
 
     if (rec) {
         return CGItem_C::GetInventoryArt(rec->m_displayInfoID);
@@ -1721,7 +1763,7 @@ int32_t CGItem_C::UseItem(WOWGUID* target, int32_t confirmed) {
 // OFFSET: 0x0070AA40
 void CGItem_C::PostInitWithStats() {
     this->m_itemFlags |= 2;
-    ItemRec* rec = g_itemDB.GetRecord(this->m_obj->m_entryID);
+    ItemRec* rec = CGItem_GetItemRec(this->m_obj->m_entryID);
     this->m_virtualItem.m_classID = rec ? rec->m_classID : 0;
     this->m_virtualItem.m_subclassID = rec ? rec->m_subclassID : 0;
     this->m_virtualItem.m_material = rec ? rec->m_material : 0;
@@ -1797,7 +1839,7 @@ int32_t CGItem_C::CanGoInSlot(int32_t itemId, uint32_t slot, int32_t bypass) {
         return 0;
     }
 
-    ItemRec* rec = g_itemDB.GetRecord(itemId);
+    ItemRec* rec = CGItem_GetItemRec(itemId);
 
     if (!rec) {
         return 0;
@@ -1917,7 +1959,7 @@ void CGItem_C::UpdateEnchantments() {
 // OFFSET: 0x00708040
 int32_t CGItem_C::GetItemEnchantmentVisualID() const {
     ItemDisplayInfoRec displayRec;
-    ItemRec* rec = g_itemDB.GetRecord(this->m_obj->m_entryID);
+    ItemRec* rec = CGItem_GetItemRec(this->m_obj->m_entryID);
     int32_t displayId = rec ? rec->m_displayInfoID : 0;
 
     if (!g_itemDisplayInfoDB.GetRecord(displayId, &displayRec)) {

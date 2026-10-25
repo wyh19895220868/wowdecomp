@@ -2228,7 +2228,7 @@ int32_t CGPlayer_C::GetPVPToggleTimer() const {
 // OFFSET: 0x006DE7E0
 uint32_t CGPlayer_C::GetEquippedAmmoDisplayId() const {
     int32_t ammoId = this->m_obj->m_guid == ClntObjMgrGetActivePlayer() ? this->m_player->m_playerAmmoId : 0;
-    ItemRec* rec = g_itemDB.GetRecord(ammoId);
+    ItemRec* rec = CGItem_GetItemRec(ammoId);
 
     return rec ? rec->m_displayInfoID : 0;
 }
@@ -10291,7 +10291,7 @@ void CGPlayer_C::UpdateObjComponentVisualsSlot(const VisibleItem_C* item, int32_
 // OFFSET: 0x006DE7E0
 uint32_t CGPlayer_C::GetEquippedItemDisplayId() {
     int32_t ammo = this->m_obj->m_guid == ClntObjMgrGetActivePlayer() ? this->m_player->m_playerAmmoId : 0;
-    ItemRec* rec = g_itemDB.GetRecord(ammo);
+    ItemRec* rec = CGItem_GetItemRec(ammo);
     return rec ? rec->m_displayInfoID : 0;
 }
 

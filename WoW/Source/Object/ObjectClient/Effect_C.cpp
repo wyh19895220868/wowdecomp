@@ -9,6 +9,7 @@
 #include "Engine/Source/Services/ParticleSystem2.h"
 #include "WoW/Source/DB/DBClient/DBClient.h"
 #include "WoW/Source/Object/ObjectClient/Object_C.h"
+#include "WoW/Source/Object/ObjectClient/Item_C.h"
 #include "WoW/Source/WorldClient/World.h"
 #include "WoW/Source/Object/ObjectClient/Unit_C.h"
 #include "WoW/Source/DB/Rec/SpellVisualEffectNameRec.h"
@@ -638,7 +639,7 @@ void CEffect::ClearLightning() {
 // VERIFY: 4c42526f auto
 // OFFSET: 0x006F8600
 void CEffect::ApplyItemVisualByItemId(int32_t id, const WOWGUID& guid, void* param, bool success) {
-    ItemRec* item = g_itemDB.GetRecord(id);
+    ItemRec* item = CGItem_GetItemRec(id);
 
     if (!item) {
         return;

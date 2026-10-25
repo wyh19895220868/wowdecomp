@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstring>
 #include <new>
+#include <map>
 #include "Engine/Source/BlizzardCore/SFile2-Core.h"
 #include "Engine/Source/Storm/H/storm.h"
 
@@ -63,6 +64,10 @@ class WowClientDB : public WowClientDB_Common<T>, public IDatabase<T> {
 
     WowClientDB();
     T* GetRecordByIndex(int32_t index) const;
+
+    // Runtime-injected records (custom items pushed by the server).
+    mutable std::map<int32_t, T> m_injectedRecords;
+    void InjectRecord(int32_t id, const T& rec);
 };
 
 template <class T>
@@ -244,11 +249,15 @@ void WowClientDB<T>::Free() {
     SMemFree(this->m_records, __FILE__, __LINE__, 0);
     this->m_records = nullptr;
 
+    this->m_injectedRecords.clear();
+
     if (this->m_recordsById) {
         delete[] this->m_recordsById;
     }
 
     this->m_recordsById = nullptr;
+    this->m_minID = 0xFFFFFFF;
+    this->m_maxID = -1;
 
     if (this->m_strings) {
         SMemFree(const_cast<char*>(this->m_strings), nullptr, 0, 0);
@@ -260,6 +269,7 @@ void WowClientDB<T>::Free() {
 // OFFSET: 0x00636C00
 template <class T>
 void WowClientDB<T>::Reset() {
+    this->m_injectedRecords.clear();
     this->m_records = nullptr;
     this->m_recordsById = nullptr;
     this->m_strings = nullptr;
@@ -280,13 +290,20 @@ void* WowClientDB<T>::GetRecordIndex() {
 // OFFSET: [0x0065C290<LiquidTypeRec>]
 template <class T>
 T* WowClientDB<T>::GetRecord(int32_t id) const {
-    if (id < this->m_minID || id > this->m_maxID) {
-        return nullptr;
+    if (this->m_recordsById && id >= this->m_minID && id <= this->m_maxID) {
+        T* record = this->m_recordsById[id - this->m_minID];
+        if (record) return record;
     }
-
-    return this->m_recordsById[id - this->m_minID];
+    auto found = this->m_injectedRecords.find(id);
+    return found == this->m_injectedRecords.end() ? nullptr : &found->second;
 }
 
+// Sparse server IDs must not resize/copy an array spanning the entire ID range.
+// std::map keeps returned record pointers stable while more items arrive.
+template <class T>
+void WowClientDB<T>::InjectRecord(int32_t id, const T& rec) {
+    if (id > 0 && !GetRecord(id)) this->m_injectedRecords.emplace(id, rec);
+}
 // INLINED
 template <class T>
 WowClientDB_RLE<T>::WowClientDB_RLE() {

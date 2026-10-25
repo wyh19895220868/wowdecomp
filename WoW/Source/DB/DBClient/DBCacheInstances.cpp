@@ -23,6 +23,7 @@
 #include "WoW/Source/Ui/GameUI.h"
 #include "WoW/Source/WowSvcs/WowSvcsClient/ClientServices.h"
 #include "WoW/Source/DB/DBClient/DBClient.h"
+#include "WoW/Source/Object/ObjectClient/Item_C.h"
 
 // STATIC: 0x00C5D690
 DBCache<CreatureStats_C, int32_t, HASHKEY_INT> g_creatureDBCache('WMOB', "creaturecache.wdb", CMSG_QUERY_CREATURE, 0, true, true, 0);
@@ -75,6 +76,15 @@ static void LoadDBCaches() {
     g_creatureDBCache.Load();
     g_gameObjectDBCache.Load();
     g_itemDBCache.Load();
+
+    // Items restored from the wdb cache must also be injected into the local
+    // Item.dbc memory table, or they lose icon/slot data after a restart.
+    for (auto* hash = g_itemDBCache.m_entries.Head(); hash; hash = g_itemDBCache.m_entries.Next(hash)) {
+        if (hash->m_loaded) {
+            CGItem_InjectItemRecFromStats(hash->m_id, hash->m_record);
+        }
+    }
+
     g_itemNameDBCache.Load();
     g_npcTextDBCache.Load();
     g_nameDBCache.Load();
@@ -113,10 +123,18 @@ static int32_t ReceiveItemName(void* param, NETMESSAGE msgId, uint32_t time, CDa
     return 1;
 }
 
+// Item static data pushed by the server also fills the in-memory Item.dbc
+// lookup table, so class/subclass/displayInfoID/inventoryType/sheatheType
+// are available even when the local Item.dbc has no row for that item.
+static void InjectItemStatsToLocalDB(int32_t key, const ItemStats_C& rec, void* param) {
+    (void)param;
+    CGItem_InjectItemRecFromStats(key, rec);
+}
+
 // VERIFY: 1cb3f926 auto
 // OFFSET: 0x006351F0
 static int32_t ReceiveMultipleItems(void* param, NETMESSAGE msgId, uint32_t time, CDataStore* msg) {
-    g_itemDBCache.AddItems(msg, false);
+    g_itemDBCache.AddItems(msg, false, InjectItemStatsToLocalDB, nullptr);
 
     return 1;
 }
@@ -229,7 +247,7 @@ static int32_t ReceiveArenaTeam(void* param, NETMESSAGE msgId, uint32_t time, CD
 // VERIFY: 00011d21 auto
 // OFFSET: 0x006354D0
 static int32_t ReceiveSingleItem(void* param, NETMESSAGE msgId, uint32_t time, CDataStore* msg) {
-    g_itemDBCache.AddItems(msg, true);
+    g_itemDBCache.AddItems(msg, true, InjectItemStatsToLocalDB, nullptr);
 
     return 1;
 }

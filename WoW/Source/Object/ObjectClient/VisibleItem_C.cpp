@@ -1,5 +1,6 @@
 #include "VisibleItem_C.h"
 #include <cstdlib>
+#include "WoW/Source/Object/ObjectClient/Item_C.h"
 #include "WoW/Source/DB/DBClient/DBCacheInstances.h"
 #include "WoW/Source/DB/DBClient/DBClient.h"
 #include "WoW/Source/DB/Rec/ItemRec.h"
@@ -41,7 +42,7 @@ uint32_t VisibleItem_C::GetInventoryType() {
         return stats->m_inventoryType;
     }
 
-    ItemRec* rec = g_itemDB.GetRecord(abs(this->m_itemId));
+    ItemRec* rec = CGItem_GetItemRec(abs(this->m_itemId));
     return rec ? rec->m_inventoryType : 0;
 }
 
@@ -55,7 +56,7 @@ uint32_t VisibleItem_C::GetDisplayID() {
         return stats->m_displayId;
     }
 
-    ItemRec* rec = g_itemDB.GetRecord(abs(this->m_itemId));
+    ItemRec* rec = CGItem_GetItemRec(abs(this->m_itemId));
     return rec ? rec->m_displayInfoID : 0;
 }
 
@@ -69,7 +70,7 @@ uint32_t VisibleItem_C::GetMaterial() {
         return stats->m_material;
     }
 
-    ItemRec* rec = g_itemDB.GetRecord(abs(this->m_itemId));
+    ItemRec* rec = CGItem_GetItemRec(abs(this->m_itemId));
     return rec ? rec->m_material : 0;
 }
 
@@ -83,7 +84,7 @@ uint32_t VisibleItem_C::GetSheatheType() {
         return stats->m_sheatheType;
     }
 
-    ItemRec* rec = g_itemDB.GetRecord(abs(this->m_itemId));
+    ItemRec* rec = CGItem_GetItemRec(abs(this->m_itemId));
     return rec ? rec->m_sheatheType : 0;
 }
 
@@ -97,7 +98,7 @@ uint32_t VisibleItem_C::GetSoundOverrideSubclassID() {
         return stats->m_soundOverrideSubclass;
     }
 
-    ItemRec* rec = g_itemDB.GetRecord(abs(this->m_itemId));
+    ItemRec* rec = CGItem_GetItemRec(abs(this->m_itemId));
     return rec ? rec->m_soundOverrideSubclassID : 0;
 }
 

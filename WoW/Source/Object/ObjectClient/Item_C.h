@@ -11,6 +11,7 @@
 class CClientObjCreate;
 class CImVector;
 class ItemStats_C;
+class ItemRec;
 class ItemGroupSoundsRec;
 class LockRec;
 
@@ -23,6 +24,13 @@ struct ITEMBYNAME : public TSHashObject<ITEMBYNAME, HASHKEY_UTF8I> {
 };
 
 int32_t GetItemIDByName(const char* name);
+
+// Copy the item static data pushed by the server into the local Item.dbc
+// table, so even an item missing from the client Item.dbc (for example a
+// custom item added by the server) resolves through the existing
+// g_itemDB.GetRecord(itemId) call sites without extra fallbacks.
+void CGItem_InjectItemRecFromStats(int32_t itemId, const ItemStats_C& stats);
+ItemRec* CGItem_GetItemRec(int32_t itemId);
 
 extern const uint32_t s_inventoryTypeSlots[29];
 
