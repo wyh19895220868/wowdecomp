@@ -254,11 +254,11 @@ class CGGameUI {
     static void HandleDisplaySizeChanged(const CSizeEvent& evt);
     static void DisplayError(UIErrors error, ...);
     static int32_t IsAutoLooting();
-    static void ShowCombatFeedback(const WOWGUID& guid, int32_t amount, uint32_t schoolMask, uint32_t flags);
+    static void ShowCombatFeedback(const WOWGUID& guid, uint32_t amount, uint32_t schoolMask, uint32_t flags);
     static void ShowSpellMissFeedback(const WOWGUID& guid, int32_t reason);
-    static void ShowHealingFeedback(const WOWGUID& guid, int32_t amount, bool crit);
+    static void ShowHealingFeedback(const WOWGUID& guid, uint32_t amount, bool crit);
     static void ShowEnergizeFeedback(const WOWGUID& guid, int32_t powerType, int32_t amount);
-    static void SignalUnitCombat(const WOWGUID& guid, const char* action, int32_t amount, uint32_t schoolMask, uint32_t flags);
+    static void SignalUnitCombat(const WOWGUID& guid, const char* action, uint32_t amount, uint32_t schoolMask, uint32_t flags);
     static void ShowCombatFeedbackAttackRoundInfo(const ATTACKROUNDINFO* info);
     static void HandleFocusChanged(const CFocusEvent& evt);
     static int32_t Idle(const void* data, void* param);
@@ -378,7 +378,7 @@ class CGGameUI {
     static int32_t IsRaidMemberOrPet(const WOWGUID& guid);
     static void ClearInteractTarget(const WOWGUID& guid, int32_t a2);
     static void CloseLoot(bool a1, bool a2, bool a3);
-    static void OpenLoot(CGObject_C* object, int32_t coins, LOOT_ACQUIRE lootAcquire);
+    static void OpenLoot(CGObject_C* object, uint32_t coins, LOOT_ACQUIRE lootAcquire);
     static void ClearLootSlot(uint8_t slot);
     static void LootSlotChanged(uint8_t slot);
     static void LockItem(WOWGUID guid);

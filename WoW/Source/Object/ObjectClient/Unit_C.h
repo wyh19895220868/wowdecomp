@@ -387,8 +387,8 @@ class CGUnit_C : public CGObject_C, public CGUnit {
     /* 0FA4 */ int32_t m_specialIdleAnim;
     /* 0FA8 */ CM2Model* m_precastMissileModel;
     /* 0FAC */ uint8_t m_precastCastCount;
-    /* 0FB0 */ int32_t m_predictedHealth;
-    /* 0FB4 */ int32_t m_predictedPower [NUM_POWER_TYPES];
+    /* 0FB0 */ uint32_t m_predictedHealth;
+    /* 0FB4 */ uint32_t m_predictedPower [NUM_POWER_TYPES];
     /* 0FD0 */ uint32_t m_powerRegenRemainder;
     /* 0FD4 */ uint32_t m_manaRegenInterruptTime;
     /* 0FD8 */ WOWGUID m_highestThreatGuid;
@@ -538,8 +538,8 @@ class CGUnit_C : public CGObject_C, public CGUnit {
     uint64_t GetLooter() const;
     uint64_t GetMasterLooter() const;
     void InitWheels();
-    int32_t GetPredictedHealth() const;
-    void SetPredictedHealth(int32_t health);
+    uint32_t GetPredictedHealth() const;
+    void SetPredictedHealth(uint32_t health);
     float GetMaxCameraHeight() const;
     uint32_t GetCreatureClassification() const;
     int32_t IsDeepInLiquid() const;
@@ -576,7 +576,7 @@ class CGUnit_C : public CGObject_C, public CGUnit {
     int32_t FindDefaultAnimForTier(int32_t tier, uint32_t* anim) const;
     CreatureModelDataRec* GetModelData() const;
     int32_t CanBeLooted(uint32_t time) const;
-    void ModifyPredictedHealth(int32_t delta);
+    void ModifyPredictedHealth(int64_t delta);
     void InitPredictedPower();
     void SetManaRegenInterrupt();
     int32_t UsesNpcBakedTexture() const;
@@ -769,7 +769,7 @@ class CGUnit_C : public CGObject_C, public CGUnit {
     void HandleNPCFeedback();
     CVehicleCamera_C* CreateVehicleCamera();
     bool IsOutdoors() const;
-    int32_t GetPredictedPower(POWER_TYPE powerType) const;
+    uint32_t GetPredictedPower(POWER_TYPE powerType) const;
     bool IgnoresAuraState(const SpellRec* spell) const;
     bool CheckStealthRules(const SpellRec* spell, int32_t* reason) const;
     bool CheckShapeshiftRules(const SpellRec* spell, int32_t* reason);
@@ -854,7 +854,7 @@ class CGUnit_C : public CGObject_C, public CGUnit {
     void OnPvPFlagChanged(uint8_t oldFlags);
     void OnVirtualItemChanged(VIRTUAL_MONSTER_SLOT slot, int32_t oldItemId);
     void OnVisFlagChanged(uint8_t oldFlags);
-    void SetPredictedPower(POWER_TYPE powerType, int32_t value);
+    void SetPredictedPower(POWER_TYPE powerType, uint32_t value);
     void SetSheatheState(uint32_t showWeapons, int32_t a2, int32_t a3);
     void UpdateClientStandState(UNITSTANDSTATE standState);
     void UpdateModelScale(const CreatureModelDataRec* modelRec);
@@ -870,7 +870,7 @@ class CGUnit_C : public CGObject_C, public CGUnit {
     int32_t CanPlayEmoteAnim();
     void UpdateDelayedSpellVisualKits();
     void PlayFallLandAnimation(uint32_t oldFlags, int32_t jumping);
-    void HandleEnvironmentDamage(uint32_t type, int32_t damage, int32_t absorbed, int32_t resisted);
+    void HandleEnvironmentDamage(uint32_t type, uint32_t damage, uint32_t absorbed, uint32_t resisted);
     bool CheckSelfResurrect();
     uint32_t ChooseAnimation(uint32_t mask, uint32_t* animFlags, int32_t* usedDefault);
     int32_t ChooseDeathAnim(uint32_t mask, uint32_t* anim, uint32_t* animFlags);
@@ -992,9 +992,9 @@ class CGUnit_C : public CGObject_C, public CGUnit {
     void PlayWoundAnimKit(int32_t crit);
     void ShowBloodSpurt(const WOWGUID& attacker, int32_t large);
     UnitBloodRec* GetBloodRecord();
-    void ModifyPredictedPower(POWER_TYPE powerType, int32_t delta);
+    void ModifyPredictedPower(POWER_TYPE powerType, int64_t delta);
     void AddWorldText(const WOWGUID& source, MISS_REASON reason, const SpellRec* spell, bool periodic);
-    void AddWorldHealingText(const WOWGUID& source, int32_t amount, const SpellRec* spell, bool crit, int32_t unused_a6);
+    void AddWorldHealingText(const WOWGUID& source, uint32_t amount, const SpellRec* spell, bool crit, int32_t unused_a6);
     void AddWorldHonorGainText(int32_t honor, int32_t pvpRank, const char* victimName);
     void PlayCombatSpellMissEffects(uint32_t reason, const WOWGUID& source);
     void CreateMissile(const SpellCastTargetPoint* point, PendingSpellCastData* data, uint32_t ammoDisplayId, uint32_t ammoInventoryType, const SpellVisualRec* visual, int32_t spellId, uint32_t delay);
@@ -1011,7 +1011,7 @@ class CGUnit_C : public CGObject_C, public CGUnit {
     void FaceTarget(const WOWGUID& target, int32_t flush);
     int32_t DeferVehicleTransitionSpline(CDataStore* msg, uint64_t transport, uint8_t seat);
     int32_t VehiclePassengerShouldWaitForVehicleTransitionAnim(uint64_t transport, uint8_t seat) const;
-    void AddWorldDamageText(const WOWGUID& source, int32_t amount, const SpellRec* spell, bool crit, bool periodic, bool spellColor);
+    void AddWorldDamageText(const WOWGUID& source, uint32_t amount, const SpellRec* spell, bool crit, bool periodic, bool spellColor);
     void UpdateSpellCastBars(uint32_t time);
     void OnChannelUpdate(int32_t remaining);
     void ClearUIChannel();

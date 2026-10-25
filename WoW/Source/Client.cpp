@@ -2,6 +2,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <map>
+#include <vector>
 #include "Client.h"
 #include "Engine/Source/Base/Base.h"
 #include "Engine/Source/Base/CmdLine.h"
@@ -18,6 +20,7 @@
 #include "Engine/Source/ConsoleBase/Types.h"
 #include "Engine/Source/Event/Event.h"
 #include "Engine/Source/Frame/CSimpleRender.h"
+#include "Engine/Source/Tempest/CImVector.h"
 #include "Engine/Source/FrameScript/FrameScript.h"
 #include "Engine/Source/FrameXML/FrameXML.h"
 #include "Engine/Source/FrameXML/XMLTree.h"
@@ -82,6 +85,7 @@
 #include "WoW/Source/ObjectAlloc/HeapUsage.h"
 #include "WoW/Source/ObjectAlloc/ObjectAlloc.h"
 #include "WoW/Source/ObjectMgrClient/ObjectMgrClient.h"
+#include "WoW/Source/Game/GameClient/WorldText.h"
 #include "WoW/Source/SoundInterface/SoundInterface2.h"
 #include "WoW/Source/Ui/AddOns.h"
 #include "WoW/Source/Ui/BarberShop.h"
@@ -89,6 +93,9 @@
 #include "WoW/Source/Ui/ChatFrame.h"
 #include "WoW/Source/Ui/GameUI.h"
 #include "WoW/Source/Ui/LootFrame.h"
+#include "WoW/Source/NativeUIFormat.h"
+#include "WoW/Source/NativeUIReader.h"
+#include "WoW/Source/NativeUIProtocol.h"
 #include "WoW/Source/Ui/PartyFrame.h"
 #include "WoW/Source/Ui/ScriptEvents.h"
 #include "WoW/Source/Ui/Tutorial.h"
@@ -505,6 +512,8 @@ static void SetDefaults(OPTION_PAGE page) {
 void ZoneDebugDestroy() {
 }
 
+static void NativeUISaveBundledAddOns();
+
 // VERIFY: a6d33d4d auto
 // OFFSET: 0x00402910
 static void WowClientDestroy() {
@@ -513,6 +522,7 @@ static void WowClientDestroy() {
     SpellVisualsShutdown();
     InputControlDestroy();
     CGlueMgr::Shutdown();
+    NativeUISaveBundledAddOns();
     ShutdownAddOns();
     DestroyBannedAddOns();
     DBCache_ClearHandlers();
@@ -762,6 +772,9 @@ int ForEveryRunOnceWTF::FileNameCompare(const void* a, const void* b) {
     return SStrSortUTF8I(*static_cast<char* const*>(a), *static_cast<char* const*>(b), STORM_MAX_STR);
 }
 
+static const bool s_nativeUIEnabled = true;
+static bool s_nativeUIBundledAddOnsLoaded = false;
+
 // VERIFY: f04c040b auto
 // OFFSET: 0x00403340
 static int32_t ClientIdle(const void* data, void* param) {
@@ -887,15 +900,71 @@ void StartupReport(bool firstRun) {
     World::SetFrameCntCallback(StartupReportFrameCallback);
 }
 
+// 335XS NativeUI: last kind-0 snapshot, kept so the bundled FrameXML layer can
+// read the real 256-bit numbers through the NativeUnitValue() Lua function (see
+// Interface/NativeUI/NativeUI.lua, which hooks the official character sheet).
+// Declared up here because LoadNewWorld() resets it before the NativeUI block
+// further down is visible to the compiler.
+int32_t const kNativeUIMaxStats = 128;
+
+struct NativeUIStat {
+    char key[64];
+    char value[1024];
+};
+
+static NativeUIStat s_nativeUIPlayerStats[kNativeUIMaxStats];
+static int32_t s_nativeUIPlayerStatCount = 0;
+static uint32_t s_nativeUIRevision = 0;
+static uint64_t s_nativeUIPlayerGuid = 0;
+
+bool NativeUIGetPlayerMoney(uint64_t& value) {
+    if (s_nativeUIPlayerGuid != ClntObjMgrGetActivePlayer().m_guid) return false;
+    for (int32_t i = 0; i < s_nativeUIPlayerStatCount; ++i) {
+        auto const& field = s_nativeUIPlayerStats[i];
+        if (strcmp(field.key, "MONEY") != 0) continue;
+        uint64_t parsed = 0;
+        if (!field.value[0]) return false;
+        for (char const* digit = field.value; *digit; ++digit) {
+            if (*digit < '0' || *digit > '9') return false;
+            uint64_t next = static_cast<uint64_t>(*digit - '0');
+            if (parsed > (UINT64_MAX - next) / 10) return false;
+            parsed = parsed * 10 + next;
+        }
+        value = parsed;
+        return true;
+    }
+    return false;
+}
+// kind=4 payload cache: item-growth (IGRO) data pushed without the addon
+// message channel. Lua reads it through NativeUIGrowthData().
+static char s_nativeUIGrowthData[65536] = { 0 };
+static uint32_t s_nativeUIGrowthRevision = 0;
+// kind=5 payload cache: UITQ ALL_MODULE_DATA (item tooltip aggregation).
+static char s_nativeUITQData[65536] = { 0 };
+static uint32_t s_nativeUITQRevision = 0;
+
+// Unit resources are keyed by GUID; Lua receives decimal strings for every unit token.
+static std::map<uint64_t, std::map<std::string, std::string>> s_nativeUIUnitValues;
+
+// 335XS fix: "same map" is not the same as "world already loaded". On login
+// ClntObjMgrGetMapID() can already equal the character's map, and the original
+// check then skipped LoadNewWorld entirely -> client stayed on the loading bar.
+static bool s_worldLoaded = false;
+
+static void SendNativeUIHello();
 // VERIFY: 2b64aabf manual
 // OFFSET: 0x00403B70
 static int32_t LoadNewWorld(const void* data, void* param) {
+    s_worldLoaded = false;
     ClientServices::Connection()->CharacterSetInGame(0);
     MovementDestroy();
     EventUnregister(EVENT_ID_IDLE, MovementIdleMoveUnits);
     CMissile::RemoveMissiles();
     Spell_C_StopTargeting();
     CGBarberShop::DisableBarberShop();
+    s_nativeUIPlayerGuid = 0;
+    s_nativeUIPlayerStatCount = 0;
+    s_nativeUIUnitValues.clear();
     ClntObjMgrDestroy();
     SpellVisualsClear();
     CEffect::Destroy();
@@ -922,6 +991,7 @@ static int32_t LoadNewWorld(const void* data, void* param) {
     AsyncFileReadSetProgressCallback(LoadingScreenAsyncCallback, nullptr);
     World::SetLoadProgressCallback(LoadingScreenWorldCallback, nullptr);
     CWorld::LoadMap(s_directory, &s_spawnPosition, s_zoneID, 1);
+    s_worldLoaded = true;
     AsyncFileReadSetProgressCallback(nullptr, nullptr);
     World::SetLoadProgressCallback(nullptr, nullptr);
 
@@ -929,6 +999,24 @@ static int32_t LoadNewWorld(const void* data, void* param) {
     camera->m_position = s_spawnPosition;
     camera->SetFacing(s_spawnRotation, 0.0f, 0.0f);
     camera->SetTarget(nullptr, 0);
+
+    // The world load callbacks do not always fire when the map is served from
+    // cache, which leaves s_progress below 1.0 and the loading screen up.
+    // Force the world component to 100%; the screen still closes through its
+    // normal path (progress > 0.99 && !IsStillLoading()).
+    LoadingScreenWorldCallback(1.0f, nullptr);
+
+    // NativeUI: handshake only after the world is fully loaded, so the server
+    // does not start pushing snapshots while the client is still loading.
+    s_nativeUIPlayerStatCount = 0;
+    s_nativeUIUnitValues.clear();
+    s_nativeUIPlayerGuid = 0;
+    s_nativeUIGrowthData[0] = 0;
+    ++s_nativeUIGrowthRevision;
+    s_nativeUITQData[0] = 0;
+    ++s_nativeUITQRevision;
+    ++s_nativeUIRevision;
+    SendNativeUIHello();
 
     if (param) {
         CDataStore msg;
@@ -963,10 +1051,475 @@ static int32_t Packet_SMSG_NEW_WORLD(void* param, NETMESSAGE msgId, uint32_t tim
     }
 
     s_directory = map->m_directory;
+    s_worldLoaded = false;
     EventSetTimer(0, LoadNewWorld, reinterpret_cast<void*>(1));
 
     return 1;
 }
+
+// NativeUI uses a single Lua owner for unit-bar rendering.
+static void NativeUILog(const char* message) { DebugLog("NativeUI: %s", message); }
+
+// ---------------------------------------------------------------------------
+// 335XS NativeUI v2 - custom protocol extension (not part of the original
+// binary, therefore no OFFSET tag). Server side:
+//   src/server/game/Handlers/ChatHandler.cpp
+//   HandleNativeUIHello / UpdateNativeUI / SendNativeUISnapshot
+//   CMSG_NATIVE_UI_HELLO (0x521)   : uint16 version = 2
+//   SMSG_NATIVE_UI_SNAPSHOT (0x522): uint16 version, uint8 kind, uint64 guid, uint16 count
+//        count * { uint8 keyLen, char key[keyLen],
+//                  uint8 type (0 = int64, 1 = string, 2 = int256 decimal),
+//                  int64 value or (uint16 len + bytes) }
+//   kind: 0 = player stats, 1 = target, 2 = pet, 3 = visible unit resources
+//         (guid != 0; count == 0 means the unit left visibility)
+// ---------------------------------------------------------------------------
+static int32_t s_nativeUISnapshotCount = 0;
+
+static void SendNativeUIHello() {
+    // Master switch off: skip the handshake entirely, so the server never
+    // starts pushing snapshots and keeps using the addon message channel.
+    if (!s_nativeUIEnabled) {
+        return;
+    }
+
+    CDataStore msg;
+    msg.Put(static_cast<uint32_t>(CMSG_NATIVE_UI_HELLO));
+    msg.Put(NativeUIProtocol::WideVersion);
+    msg.Finalize();
+    ClientServices::Send2(&msg);
+}
+
+static void NativeUIAppendField(char* buffer, size_t capacity, const char* key, const char* value) {
+    size_t used = strlen(buffer);
+
+    if (used + 2 >= capacity) {
+        return;
+    }
+
+    _snprintf_s(buffer + used, capacity - used, _TRUNCATE, " %s=%s", key, value);
+}
+
+// --- Lua bridge ------------------------------------------------------------
+// Interface/NativeUI/NativeUI.lua is bundled FrameXML: it hooks the official
+// character sheet and asks these three globals for the values. Keeping the
+// numbers in C++ means the sheet shows the real 256-bit stats instead of the
+// 32-bit unit fields, without any addon.
+static int32_t Script_NativeUnitValue(lua_State* L) {
+    static bool logged = false;
+
+    if (!logged) {
+        logged = true;
+        NativeUILog("LUA NativeUnitValue called (bundled FrameXML bridge active)");
+    }
+
+    char const* unit = lua_tostring(L, 1);
+    char const* key = lua_tostring(L, 2);
+
+    if (!key || !*key) {
+        return 0;
+    }
+
+    if (!unit) {
+        unit = "player";
+    }
+
+    if (_stricmp(unit, "player") == 0) {
+        for (int32_t i = 0; i < s_nativeUIPlayerStatCount; ++i) {
+            if (_stricmp(s_nativeUIPlayerStats[i].key, key) == 0) {
+                lua_pushstring(L, s_nativeUIPlayerStats[i].value);
+                return 1;
+            }
+        }
+
+        return 0;
+    }
+
+    WOWGUID selectedGuid = WOWGUID();
+    if (!Script_GetGUIDFromToken(unit, selectedGuid, false)) {
+        return 0;
+    }
+    auto found = s_nativeUIUnitValues.find(selectedGuid.m_guid);
+    if (found != s_nativeUIUnitValues.end()) {
+        auto field = found->second.find(key);
+        if (field != found->second.end()) {
+            lua_pushstring(L, field->second.c_str());
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+#if defined(_WIN64)
+static int32_t Script_NativeMoneyString(lua_State* L) {
+    uint64_t money = 0;
+    if (!NativeUIGetPlayerMoney(money)) return 0;
+    char text[32];
+    _snprintf_s(text, sizeof(text), _TRUNCATE, "%llu", static_cast<unsigned long long>(money));
+    lua_pushstring(L, text);
+    return 1;
+}
+#endif
+
+static int32_t Script_NativeUIRevision(lua_State* L) {
+    lua_pushnumber(L, static_cast<lua_Number>(s_nativeUIRevision));
+    return 1;
+}
+
+static int32_t Script_NativeUIGrowthData(lua_State* L) {
+    lua_pushstring(L, s_nativeUIGrowthData);
+    lua_pushnumber(L, static_cast<lua_Number>(s_nativeUIGrowthRevision));
+    return 2;
+}
+
+static int32_t Script_NativeUITQData(lua_State* L) {
+    lua_pushstring(L, s_nativeUITQData);
+    lua_pushnumber(L, static_cast<lua_Number>(s_nativeUITQRevision));
+    return 2;
+}
+
+static int32_t Script_NativeUIHello(lua_State* L) {
+    SendNativeUIHello();
+    return 0;
+}
+
+static bool s_nativeUIScriptsRegistered = false;
+static bool s_nativeUIBundledLuaLoaded = false;
+
+static void NativeUIRegisterScriptFunctions() {
+    if (s_nativeUIScriptsRegistered) {
+        return;
+    }
+
+    s_nativeUIScriptsRegistered = true;
+    FrameScript_RegisterFunction("NativeUnitValue", Script_NativeUnitValue);
+#if defined(_WIN64)
+    FrameScript_RegisterFunction("NativeMoneyString", Script_NativeMoneyString);
+#endif
+    FrameScript_RegisterFunction("NativeUIRevision", Script_NativeUIRevision);
+    FrameScript_RegisterFunction("NativeUIGrowthData", Script_NativeUIGrowthData);
+    FrameScript_RegisterFunction("NativeUITQData", Script_NativeUITQData);
+    FrameScript_RegisterFunction("NativeUIHello", Script_NativeUIHello);
+}
+
+struct NativeUIBundledAddon {
+    const char* name;
+    const char* const* files;
+    uint32_t fileCount;
+    const char* const* savedVariables;
+    uint32_t savedVariableCount;
+};
+
+static const char* const s_nativeUIBundledFunctionFiles[] = {
+    "DreamTemplate.xml", "___DreamConfig.lua", "__DreamFunction.lua", "CustomTargetHealth.lua", "BanListAddon.lua",
+    "CustomInfo.lua", "DmgRank.lua", "DressItemTransmog.lua", "EqUpgrade.lua", "EventSignIn.lua",
+    "ItemCards.lua", "BeastCards.lua", "ItemGlobalTooltip.lua", "ItemShop.lua", "ItemUpChoice.lua",
+    "ItemUpRandom.lua", "ItemVsInfo.lua", "NewLuck.lua", "OnGameEventShow.lua", "GuildBattleUI.lua",
+    "AsPlayerBattleUI.lua", "Other.lua", "PlayerDeadRevive.lua", "PlayerNtRank.lua", "TipButton.lua",
+    "PlayerActivity.lua", "SecretPlaceMod.lua", "PlayerItemMagic.lua", "ItemEnchantment.lua", "SoulItemMod.lua",
+    "NewItemEnchantment.lua", "SpellItemEnchantmentData.lua", "ItemSubNameData.lua", "ItemBuyInfo.lua", "ItemVendorInfo.lua",
+    "ItemSellGuidInfo.lua", "PlayerItemZodiac.lua", "CombatPet.lua", "MapProgressUI.lua", "TaskEnchSpellMod.lua",
+    "PicGuide.lua", "locallzation.lua",
+};
+
+static const char* const s_nativeUIBundledFrozenFiles[] = { "FrozenCore.lua" };
+static const char* const s_nativeUIBundledItemForgeFiles[] = { "ItemForgeUI.lua" };
+static const char* const s_nativeUIBundledDamageFiles[] = { "DamageDisplayUI.lua", "NativeCombatText.lua" };
+
+static const char* const s_nativeUIBundledFunctionVariables[] = {
+    "Zs_GuidLowStoreData", "Zs_EntryIdStoreData", "BossHealthBarSavedVars", "ItemForgeUIDB", "MapProgressUIDB",
+};
+static const char* const s_nativeUIBundledFrozenVariables[] = { "FrozenData" };
+static const char* const s_nativeUIBundledItemForgeVariables[] = { "ItemForgeUIDB" };
+static const char* const s_nativeUIBundledDamageVariables[] = { "DamageDisplayUIDB", "LargeDamageTextDB" };
+
+static const NativeUIBundledAddon s_nativeUIBundledAddons[] = {
+    { "____Function", s_nativeUIBundledFunctionFiles, sizeof(s_nativeUIBundledFunctionFiles) / sizeof(s_nativeUIBundledFunctionFiles[0]), s_nativeUIBundledFunctionVariables, sizeof(s_nativeUIBundledFunctionVariables) / sizeof(s_nativeUIBundledFunctionVariables[0]) },
+    { "FrozenCore", s_nativeUIBundledFrozenFiles, sizeof(s_nativeUIBundledFrozenFiles) / sizeof(s_nativeUIBundledFrozenFiles[0]), s_nativeUIBundledFrozenVariables, sizeof(s_nativeUIBundledFrozenVariables) / sizeof(s_nativeUIBundledFrozenVariables[0]) },
+    { "ItemForgeUI", s_nativeUIBundledItemForgeFiles, sizeof(s_nativeUIBundledItemForgeFiles) / sizeof(s_nativeUIBundledItemForgeFiles[0]), s_nativeUIBundledItemForgeVariables, sizeof(s_nativeUIBundledItemForgeVariables) / sizeof(s_nativeUIBundledItemForgeVariables[0]) },
+    { "DamageDisplayUI", s_nativeUIBundledDamageFiles, sizeof(s_nativeUIBundledDamageFiles) / sizeof(s_nativeUIBundledDamageFiles[0]), s_nativeUIBundledDamageVariables, sizeof(s_nativeUIBundledDamageVariables) / sizeof(s_nativeUIBundledDamageVariables[0]) },
+};
+
+static void NativeUIBundledSavedVariablesPath(const NativeUIBundledAddon& addon, char* path, uint32_t pathSize) {
+    SStrPrintf(path, pathSize, "WTF\\Account\\%s\\SavedVariables\\%s.lua", ClientServices::GetAccountName(), addon.name);
+}
+
+static void NativeUILoadBundledSavedVariables(const NativeUIBundledAddon& addon, CStatus* status) {
+    char path[260];
+    NativeUIBundledSavedVariablesPath(addon, path, sizeof(path));
+    if (SFile::FileExistsEx(path, 1)) {
+        FrameScript_LoadVariables(path, status);
+    }
+}
+
+static void NativeUISaveBundledSavedVariables(const NativeUIBundledAddon& addon) {
+    char directory[260];
+    SStrPrintf(directory, sizeof(directory), "WTF\\Account\\%s\\SavedVariables", ClientServices::GetAccountName());
+    if (!OsDirectoryExists(directory)) {
+        OsCreateDirectory(directory, 1);
+    }
+
+    char path[260];
+    NativeUIBundledSavedVariablesPath(addon, path, sizeof(path));
+    if (OsFileExists(path)) {
+        char backup[260];
+        SStrCopy(backup, path, sizeof(backup));
+        SStrPack(backup, ".bak", sizeof(backup));
+        OsMoveFile(path, backup);
+    }
+
+    HOSFILE file = OsCreateFile(path, OS_GENERIC_WRITE, 0, OS_CREATE_ALWAYS, OS_FILE_ATTRIBUTE_NORMAL, OS_FILE_TYPE_ANY);
+    if (file == OS_INVALID_FILE) {
+        return;
+    }
+
+    for (uint32_t i = 0; i < addon.savedVariableCount; ++i) {
+        FrameScript_PrintVariable(file, addon.savedVariables[i]);
+    }
+
+    uint32_t written;
+    OsWriteFile(file, "\r\n", 2, &written);
+    OsCloseFile(file);
+}
+
+static void NativeUIEnsureBundledAddOns() {
+    if (s_nativeUIBundledAddOnsLoaded) {
+        return;
+    }
+
+    s_nativeUIBundledAddOnsLoaded = true;
+    CStatus status;
+
+    for (const NativeUIBundledAddon& addon : s_nativeUIBundledAddons) {
+        MD5_CTX md5;
+        MD5Init(&md5);
+
+        for (uint32_t i = 0; i < addon.fileCount; ++i) {
+            char path[260];
+            SStrPrintf(path, sizeof(path), "Interface\\NativeUI\\BundledAddOns\\%s\\%s", addon.name, addon.files[i]);
+            const char* extension = SStrChrR(const_cast<char*>(path), '.');
+            if (extension && !SStrCmpI(extension, ".xml", STORM_MAX_STR)) {
+                FrameXML_ProcessFile(path, addon.name, &md5, &status);
+            } else {
+                FrameScript_ExecuteFile(path, addon.name, &md5, &status);
+            }
+        }
+
+        uint8_t digest[16];
+        MD5Final(digest, &md5);
+        NativeUILoadBundledSavedVariables(addon, &status);
+        FrameScript_SignalEvent(SCRIPT_EVENT_ADDON_LOADED, "%s", addon.name);
+    }
+
+    if (status.m_highestSeverity > STATUS_INFO) {
+        NativeUILog("Bundled add-on load reported script errors");
+    }
+}
+
+static void NativeUISaveBundledAddOns() {
+    if (!s_nativeUIBundledAddOnsLoaded) {
+        return;
+    }
+
+    for (const NativeUIBundledAddon& addon : s_nativeUIBundledAddons) {
+        NativeUISaveBundledSavedVariables(addon);
+    }
+}
+
+void NativeUIShutdownFrameXML() {
+    NativeUISaveBundledAddOns();
+    s_nativeUIBundledAddOnsLoaded = false;
+    s_nativeUIBundledLuaLoaded = false;
+    s_nativeUIScriptsRegistered = false;
+}
+
+// The bundled FrameXML file lives next to the client (Interface\NativeUI) and
+// hooks the official character sheet. Load it during game FrameXML creation:
+// some FrameXML revisions never load that folder on their own. The file starts
+// with a re-entry guard, so a second load is a no-op.
+static void NativeUIEnsureBundledLua() {
+    if (s_nativeUIBundledLuaLoaded) {
+        return;
+    }
+
+    s_nativeUIBundledLuaLoaded = true;
+
+    if (!FrameScript_ExecuteFile("Interface\\NativeUI\\NativeUI.lua", nullptr, nullptr, nullptr)) {
+        NativeUILog("LUA bundled NativeUI.lua not found or failed to load");
+    }
+}
+
+// Called exactly once from CGGameUI::InitializeFrameXML, before PLAYER_LOGIN.
+// Loading is never triggered by a bar pointer change or a per-frame retry.
+void NativeUIInitializeFrameXML() {
+    s_nativeUIScriptsRegistered = false;
+    s_nativeUIBundledLuaLoaded = false;
+    s_nativeUIBundledAddOnsLoaded = false;
+    NativeUIRegisterScriptFunctions();
+    NativeUIEnsureBundledLua();
+    NativeUIEnsureBundledAddOns();
+
+}
+
+static int32_t Packet_SMSG_NATIVE_UI_SNAPSHOT(void* param, NETMESSAGE msgId, uint32_t time, CDataStore* msg) {
+    uint16_t version = 0, count = 0;
+    uint8_t kind = 0;
+    uint64_t guid = 0;
+    if (!NativeUIRead(msg, version) || !NativeUIRead(msg, kind) || !NativeUIRead(msg, guid) ||
+        !NativeUIRead(msg, count) || (version != NativeUIProtocol::LegacyVersion && version != NativeUIProtocol::WideVersion) || kind > NativeUIProtocol::LastSnapshotKind || count > NativeUIProtocol::MaxFields) return 1;
+
+    std::vector<NativeUIStat> fields;
+    fields.reserve(count);
+    std::string extendedPayload;
+    bool hasExtendedPayload = false;
+    for (uint16_t i = 0; i < count; ++i) {
+        NativeUIStat field = {};
+        uint8_t keyLength = 0, type = 0;
+        if (!NativeUIRead(msg, keyLength) || !keyLength || keyLength > NativeUIProtocol::MaxKeyBytes ||
+            !NativeUIReadText(msg, keyLength, field.key, sizeof(field.key)) ||
+            !NativeUIRead(msg, type)) return 1;
+        if (type == 0) {
+            uint64_t number = 0;
+            if (!NativeUIRead(msg, number)) return 1;
+            _snprintf_s(field.value, sizeof(field.value), _TRUNCATE, "%lld", static_cast<long long>(number));
+        } else if (type == 1 || (version == NativeUIProtocol::WideVersion && type == 2)) {
+            uint16_t length = 0;
+            if (!NativeUIRead(msg, length)) return 1;
+            if (type == 1 && ((kind == 4 && strcmp(field.key, "IGRO_DATA") == 0) ||
+                (kind == 5 && strcmp(field.key, "UITQ_DATA") == 0))) {
+                std::vector<char> data(static_cast<size_t>(length) + 1);
+                if (!NativeUIReadText(msg, length, data.data(), data.size())) return 1;
+                extendedPayload.assign(data.data(), length);
+                hasExtendedPayload = true;
+            } else {
+                if (length > NativeUIProtocol::MaxValueBytes) return 1;
+                if (!NativeUIReadText(msg, length, field.value, sizeof(field.value))) return 1;
+                if (type == 2 && (length > NativeUIProtocol::MaxIntegerBytes || !NativeUIIsInt256(field.value))) return 1;
+            }
+        } else {
+            return 1;
+        }
+        fields.push_back(field);
+    }
+    if (msg->m_read != msg->m_size) return 1;
+
+    uint64_t previousMoney = 0;
+    bool hadMoney = NativeUIGetPlayerMoney(previousMoney);
+    if (kind == 0) {
+        if (guid != ClntObjMgrGetActivePlayer().m_guid) return 1;
+        s_nativeUIPlayerStatCount = 0;
+        s_nativeUIPlayerGuid = guid;
+    }
+    if (kind <= 3 && guid) {
+        if (count == 0) {
+            s_nativeUIUnitValues.erase(guid);
+        } else {
+            auto& resources = s_nativeUIUnitValues[guid];
+            resources.clear();
+            for (auto const& field : fields) resources[field.key] = field.value;
+        }
+    }
+    if (kind == 0) {
+        for (auto const& field : fields) s_nativeUIPlayerStats[s_nativeUIPlayerStatCount++] = field;
+    }
+    if (hasExtendedPayload) {
+        if (kind == 4) {
+            _snprintf_s(s_nativeUIGrowthData, sizeof(s_nativeUIGrowthData), _TRUNCATE, "%s", extendedPayload.c_str());
+            ++s_nativeUIGrowthRevision;
+        } else if (kind == 5) {
+            _snprintf_s(s_nativeUITQData, sizeof(s_nativeUITQData), _TRUNCATE, "%s", extendedPayload.c_str());
+            ++s_nativeUITQRevision;
+        }
+    }
+    if (kind == 0) {
+        ++s_nativeUIRevision;
+#if defined(_WIN64)
+        uint64_t currentMoney = 0;
+        if (NativeUIGetPlayerMoney(currentMoney) && (!hadMoney || currentMoney != previousMoney)) {
+            FrameScript_SignalEvent(SCRIPT_EVENT_PLAYER_MONEY, nullptr);
+        }
+#endif
+    }
+    if (s_nativeUISnapshotCount++ == 0) {
+        NativeUILog("protocol connected");
+    }
+    return 1;
+}
+
+// ---------------------------------------------------------------------------
+// 335XS NativeUI v2: exact 256-bit floating combat text.
+// The stock combat text goes through COMBAT_TEXT_UPDATE with an int32 amount,
+// so any value above 2^31 is already gone by the time Lua sees it. This opcode
+// carries exact decimal text and the client renders it with the engine's own world
+// text (same fade/ascend animation the game uses for floating labels).
+//   uint16 version = 2
+//   uint8  kind    (0 = damage, 1 = crit, 2 = heal)
+//   uint64 guid    (unit that took the hit / heal)
+//   uint16 decimalLength; char amount[decimalLength] (v1 retains int64)
+//   uint8  schoolMask
+// ---------------------------------------------------------------------------
+static int32_t Packet_SMSG_NATIVE_UI_COMBAT_TEXT(void* param, NETMESSAGE msgId, uint32_t time, CDataStore* msg) {
+    uint16_t version = 0;
+    uint8_t kind = 0;
+    uint64_t rawGuid = 0;
+    uint8_t schoolMask = 0;
+    if (!NativeUIRead(msg, version) || !NativeUIRead(msg, kind) || !NativeUIRead(msg, rawGuid)) return 1;
+    char amount[80] = {};
+    if (version == 1) {
+        uint64_t rawAmount = 0;
+        if (!NativeUIRead(msg, rawAmount)) return 1;
+        _snprintf_s(amount, sizeof(amount), _TRUNCATE, "%lld", static_cast<long long>(rawAmount));
+    } else if (version == 2) {
+        uint16_t length = 0;
+        if (!NativeUIRead(msg, length) || length >= sizeof(amount) ||
+            !NativeUIReadText(msg, length, amount, sizeof(amount)) || !NativeUIIsInt256(amount)) return 1;
+    } else return 1;
+    if (!NativeUIRead(msg, schoolMask) || msg->m_read != msg->m_size || rawGuid == 0 ||
+        kind > 2 || NativeUIInteger(amount) <= 0) return 1;
+
+    // Optional switch: addons that draw their own 64-bit combat text (for
+    // example DamageDisplayUI) set nativeCombatText=0 to avoid double text.
+    CVar* nativeCombatText = CVar::Lookup("nativeCombatText");
+
+    if (nativeCombatText && !nativeCombatText->m_intValue) {
+        return 1;
+    }
+
+    WOWGUID guid;
+    guid.m_guid = rawGuid;
+
+    CGObject_C* object = ClntObjMgrObjectPtr(guid, TYPE_UNIT, __FILE__, __LINE__);
+
+    if (!object) {
+        return 1;
+    }
+
+    C3Vector position = object->GetPosition();
+    position.z += 2.2f;
+
+    char text[96];
+    NativeUIFormatAmount(amount, text, sizeof(text));
+
+    uint32_t type = 0;
+    CImVector color(0xFF, 0xFF, 0xFF, 0xFF);   // damage: white
+
+    if (kind == 1) {
+        type = 3;
+        color = CImVector(0x00, 0xE0, 0xFF, 0xFF);   // crit: yellow
+    } else if (kind == 2) {
+        type = 6;
+        color = CImVector(0x00, 0xFF, 0x00, 0xFF);   // heal: green
+    }
+
+    WorldTextCreate(type, position, text, &color, nullptr);
+
+    (void)param;
+    (void)msgId;
+    (void)time;
+    (void)schoolMask;
+    return 1;
+}
+
 
 // VERIFY: 1eb347a4 auto
 // OFFSET: 0x00403DE0
@@ -981,7 +1534,7 @@ static int32_t Packet_SMSG_LOGIN_VERIFY_WORLD(void* param, NETMESSAGE msgId, uin
     msg->Get(position.z);
     msg->Get(rotation);
 
-    if (zoneID == ClntObjMgrGetMapID()) {
+    if (s_worldLoaded && zoneID == ClntObjMgrGetMapID()) {
         return 1;
     }
 
@@ -1321,6 +1874,9 @@ void ClientInitializeGame(uint32_t mapId, C3Vector position) {
     ClientServices::SetMessageHandler(SMSG_TRANSFER_PENDING, Packet_SMSG_TRANSFER_PENDING, nullptr);
     ClientServices::SetMessageHandler(SMSG_TRANSFER_ABORTED, Packet_SMSG_TRANSFER_ABORTED, nullptr);
     ClientServices::SetMessageHandler(SMSG_LOGIN_VERIFY_WORLD, Packet_SMSG_LOGIN_VERIFY_WORLD, nullptr);
+    ClientServices::SetMessageHandler(SMSG_NATIVE_UI_SNAPSHOT, Packet_SMSG_NATIVE_UI_SNAPSHOT, nullptr);
+    NativeUIRegisterScriptFunctions();
+    ClientServices::SetMessageHandler(SMSG_NATIVE_UI_COMBAT_TEXT, Packet_SMSG_NATIVE_UI_COMBAT_TEXT, nullptr);
     ClientServices::SetMessageHandler(SMSG_KICK_REASON, CGlueMgr::OnKickReasonMsg, nullptr);
 
     MapRec* map = g_mapDB.GetRecord(mapId);
@@ -1561,6 +2117,8 @@ void ClientDestroyGame(int32_t charSelect, int32_t resumeGlue, int32_t worldLogi
     ClientServices::ClearMessageHandler(SMSG_CHANNEL_NOTIFY);
     ClientServices::ClearMessageHandler(SMSG_CHANNEL_LIST);
     ClientServices::ClearMessageHandler(SMSG_LOGIN_VERIFY_WORLD);
+    ClientServices::ClearMessageHandler(SMSG_NATIVE_UI_SNAPSHOT);
+    ClientServices::ClearMessageHandler(SMSG_NATIVE_UI_COMBAT_TEXT);
     ClientServices::ClearMessageHandler(SMSG_KICK_REASON);
 
     if (StaticSingleton<CommandManager>::m_instance) {
@@ -1583,6 +2141,15 @@ void ClientDestroyGame(int32_t charSelect, int32_t resumeGlue, int32_t worldLogi
     LootRollShutdown();
     EventUnregister(EVENT_ID_IDLE, MovementIdleMoveUnits);
     Spell_C_StopTargeting();
+    s_worldLoaded = false;
+    s_nativeUIPlayerGuid = 0;
+    s_nativeUIPlayerStatCount = 0;
+    s_nativeUIUnitValues.clear();
+    s_nativeUIGrowthData[0] = 0;
+    s_nativeUITQData[0] = 0;
+    ++s_nativeUIGrowthRevision;
+    ++s_nativeUITQRevision;
+    ++s_nativeUIRevision;
     ClntObjMgrDestroy();
     CGUnit_C::PostShutdown();
     SpellVisualsClear();

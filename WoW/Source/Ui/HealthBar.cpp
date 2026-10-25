@@ -24,7 +24,7 @@ static int32_t SimpleHealthUpdateHandler(WOWGUID guid, uint32_t fieldOffset, uin
 
     if (unit) {
         CGSimpleHealthBar* bar = static_cast<CGSimpleHealthBar*>(param);
-        bar->SetMinMaxValues(0.0f, static_cast<float>(static_cast<int32_t>(unit->m_unit->m_unitFieldMaxhealth)));
+        bar->SetMinMaxValues(0.0f, static_cast<float>(unit->m_unit->m_unitFieldMaxhealth));
         bar->SetValue(static_cast<float>(unit->m_unit->m_unitFieldHealth));
     }
 
@@ -114,6 +114,6 @@ void CGSimpleHealthBar::SetUnit(CGUnit_C* unit) {
 
     this->m_guid = unit->m_obj->m_guid;
     this->InstallMirrorHandlers();
-    this->SetMinMaxValues(0.0f, static_cast<float>(static_cast<int32_t>(unit->m_unit->m_unitFieldMaxhealth)));
+    this->SetMinMaxValues(0.0f, static_cast<float>(unit->m_unit->m_unitFieldMaxhealth));
     this->SetValue(static_cast<float>(unit->m_unit->m_unitFieldHealth));
 }

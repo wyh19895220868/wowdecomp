@@ -740,6 +740,17 @@ union luai_Cast { double l_d; long l_l; };
 
 #endif
 
+/* Windows long is 32-bit even in Wow64. Widen decimal amounts while keeping
+** existing hexadecimal and octal bit-mask formatting unchanged. Lua numbers
+** are doubles, so exact integer formatting is limited to 53 magnitude bits. */
+#if defined(_WIN32)
+#define LUA_DECIMALFRMLEN		"ll"
+#define LUA_DECIMALFRM_T		long long
+#else
+#define LUA_DECIMALFRMLEN		LUA_INTFRMLEN
+#define LUA_DECIMALFRM_T		LUA_INTFRM_T
+#endif
+
 
 
 /* =================================================================== */

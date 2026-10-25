@@ -289,6 +289,62 @@ static uint32_t s_frameStackHiddenColors[2] = { 0xFF666666, 0xFF999999 };
 // STATIC: 0x00C5D368
 static TSGrowableArray<FrameStackInfo> s_frameStack;
 
+static void ExpandInt64Format(const char* format, char* expanded, size_t size) {
+    if (!format || !size) {
+        return;
+    }
+
+    size_t out = 0;
+
+    for (size_t i = 0; format[i] && out + 1 < size; i++) {
+        if (format[i] == '%' && format[i + 1] == '%') {
+            if (out + 2 >= size) {
+                break;
+            }
+
+            expanded[out++] = '%';
+            expanded[out++] = '%';
+            i++;
+            continue;
+        }
+
+        if (format[i] != '%') {
+            expanded[out++] = format[i];
+            continue;
+        }
+
+        size_t conversion = i + 1;
+
+        while (format[conversion] && (format[conversion] < 'A' || format[conversion] > 'z')) {
+            conversion++;
+        }
+
+        if (format[conversion] == 'd' || format[conversion] == 'i') {
+            if (out + 5 >= size) {
+                break;
+            }
+
+            expanded[out++] = '%';
+            expanded[out++] = 'I';
+            expanded[out++] = '6';
+            expanded[out++] = '4';
+            expanded[out++] = 'd';
+            i = conversion;
+        } else {
+            expanded[out++] = format[i];
+        }
+    }
+
+    expanded[out] = '\0';
+}
+
+template <typename... Args>
+static void SStrPrintfInt64(char* buffer, size_t size, const char* format, Args... args) {
+    char expanded[1024];
+    ExpandInt64Format(format, expanded, sizeof(expanded));
+    SStrPrintf(buffer, size, expanded, args...);
+}
+
 // VERIFY: e25b476e auto
 // OFFSET: 0x0061B5B0
 void CGItemStatsSummary::Create() {
@@ -416,7 +472,7 @@ void CGItemStatsSummary::AddStatMods(const ItemStats_C* stats) {
 
     for (int32_t i = 0; i < stats->m_statsCount; i++) {
         uint32_t type = stats->m_statType[i];
-        int32_t value = stats->m_statValue[i];
+        int64_t value = static_cast<int64_t>(stats->m_statValue[i]);
         this->m_stats[type + 11] += value;
 
         if (type == 38) {
@@ -431,8 +487,8 @@ void CGItemStatsSummary::AddStatMods(const ItemStats_C* stats) {
 // VERIFY: d44a4a8d manual
 // OFFSET: 0x0061B9E0
 void CGItemStatsSummary::MakeStatNamesPretty(int32_t stat, const int32_t* group, uint32_t count, int32_t merge) {
-    int32_t value = this->m_stats[stat];
-    int32_t previous = 0;
+    int64_t value = this->m_stats[stat];
+    int64_t previous = 0;
 
     for (uint32_t i = 0; i < count; i++) {
         this->m_stats[group[i]] += value;
@@ -533,7 +589,7 @@ static int32_t HealthUpdateHandler(WOWGUID guid, uint32_t fieldOffset, uint32_t 
 
     if (unit) {
         CSimpleStatusBar* statusBar = static_cast<CSimpleStatusBar*>(param);
-        statusBar->SetMinMaxValues(0.0f, static_cast<float>(static_cast<int32_t>(unit->m_unit->m_unitFieldMaxhealth)));
+        statusBar->SetMinMaxValues(0.0f, static_cast<float>(unit->m_unit->m_unitFieldMaxhealth));
         statusBar->SetValue(static_cast<float>(unit->m_unit->m_unitFieldHealth));
     }
 
@@ -1786,7 +1842,7 @@ int32_t CGTooltip::SetUnit(const WOWGUID& guid, int32_t showHealth, const WOWGUI
     if (this->m_statusBar && showHealth) {
         this->m_healthGuid = healthGuid ? healthGuid : this->m_unitGuid;
         CGUnit_C* healthUnit = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(this->m_healthGuid, TYPE_UNIT, __FILE__, __LINE__));
-        ClntObjMgrSetObjMirrorHandler(this->m_healthGuid, ID_UNIT, offsetof(CGUnitData, m_unitFieldHealth), sizeof(int32_t), HealthUpdateHandler, this->m_statusBar, HANDLER_PRIORITY_NORMAL, 0);
+        ClntObjMgrSetObjMirrorHandler(this->m_healthGuid, ID_UNIT, offsetof(CGUnitData, m_unitFieldHealth), sizeof(uint32_t), HealthUpdateHandler, this->m_statusBar, HANDLER_PRIORITY_NORMAL, 0);
 
         float maxHealth;
 
@@ -3138,7 +3194,7 @@ void CGTooltip::AddDeltaHeader(int32_t* first) {
 
 // VERIFY: 2d962f56 auto
 // OFFSET: 0x00623810
-void CGTooltip::AddColoredItemStat(int32_t value, const char* name, int32_t* first) {
+void CGTooltip::AddColoredItemStat(int64_t value, const char* name, int32_t* first) {
     if (!value) {
         return;
     }
@@ -3146,7 +3202,8 @@ void CGTooltip::AddColoredItemStat(int32_t value, const char* name, int32_t* fir
     this->AddDeltaHeader(first);
     const char* color = value > 0 ? s_colorStrings[3] : s_negativeDeltaColor;
     char text[512];
-    SStrPrintf(text, sizeof(text), "%s%c%d%s %s", color, value > 0 ? '+' : '-', abs(value), "|r", name);
+    int64_t absoluteValue = value < 0 ? -value : value;
+    SStrPrintf(text, sizeof(text), "%s%c%I64d%s %s", color, value > 0 ? '+' : '-', absoluteValue, "|r", name);
     const CImVector& textColor = *reinterpret_cast<const CImVector*>(&s_tooltipTextColor);
     this->AddLine(text, nullptr, textColor, textColor, 0);
 }
@@ -4690,8 +4747,9 @@ static void AddItemArmorAndStatLines(CGTooltip* tooltip, const ItemStats_C* stat
             SStrCopy(format, FrameScript_GetText(s_itemModTokens[s_primaryStatOrder[i]], -1, GENDER_NOT_APPLICABLE), sizeof(format));
 
             if (format[0]) {
-                int32_t value = stats->m_statValue[j];
-                SStrPrintf(text, sizeof(text), format, 2 * (value <= 0) + '+', abs(value));
+                int64_t value = static_cast<int64_t>(stats->m_statValue[j]);
+                int64_t absoluteValue = value < 0 ? -value : value;
+                SStrPrintfInt64(text, sizeof(text), format, 2 * (value <= 0) + '+', absoluteValue);
                 tooltip->AddLine(text, nullptr, textColor, textColor, 1);
             }
         }
@@ -4716,7 +4774,8 @@ static void AddItemArmorAndStatLines(CGTooltip* tooltip, const ItemStats_C* stat
             SStrCopy(format, FrameScript_GetText(s_itemModTokens[s_primaryStatOrder[i]], -1, GENDER_NOT_APPLICABLE), sizeof(format));
 
             if (format[0]) {
-                SStrPrintf(text, sizeof(text), format, 2 * (value <= 0) + '+', abs(value));
+                int64_t absoluteValue = value < 0 ? -value : value;
+                SStrPrintfInt64(text, sizeof(text), format, 2 * (value <= 0) + '+', absoluteValue);
                 tooltip->AddLine(text, nullptr, textColor, textColor, 1);
             }
         }
@@ -4749,7 +4808,8 @@ static void AddItemArmorAndStatLines(CGTooltip* tooltip, const ItemStats_C* stat
             SStrPrintf(format, sizeof(format), "SPELL_SCHOOL%d_CAP", i);
             SStrCopy(school, FrameScript_GetText(format, -1, GENDER_NOT_APPLICABLE), sizeof(school));
             SStrCopy(format, FrameScript_GetText("ITEM_RESIST_SINGLE", -1, GENDER_NOT_APPLICABLE), sizeof(format));
-            SStrPrintf(text, sizeof(text), format, 2 * (value <= 0) + '+', abs(value), school);
+            int64_t absoluteValue = value < 0 ? -value : value;
+            SStrPrintfInt64(text, sizeof(text), format, 2 * (value <= 0) + '+', absoluteValue, school);
             tooltip->AddLine(text, nullptr, textColor, textColor, 0);
         }
     }
@@ -5689,7 +5749,7 @@ static void AddItemSpellStatLines(CGTooltip* tooltip, const ItemStats_C* stats, 
 
     if (!stats->m_scalingStatValue) {
         for (uint32_t i = 0; i < 10; i++) {
-            int32_t value = stats->m_statValue[i];
+            int64_t value = static_cast<int64_t>(stats->m_statValue[i]);
 
             if (!value || stats->m_statType[i] == static_cast<uint32_t>(-1)) {
                 continue;
@@ -5712,9 +5772,10 @@ static void AddItemSpellStatLines(CGTooltip* tooltip, const ItemStats_C* stats, 
 
             if (format[0]) {
                 if (SStrStr(format, "%c")) {
-                    SStrPrintf(bonus, sizeof(bonus), format, 2 * (value <= 0) + '+', abs(value));
+                    int64_t absoluteValue = value < 0 ? -value : value;
+                    SStrPrintfInt64(bonus, sizeof(bonus), format, 2 * (value <= 0) + '+', absoluteValue);
                 } else {
-                    SStrPrintf(bonus, sizeof(bonus), format, value);
+                    SStrPrintfInt64(bonus, sizeof(bonus), format, value);
                 }
 
                 SStrPrintf(text, sizeof(text), "%s %s", FrameScript_GetText("ITEM_SPELL_TRIGGER_ONEQUIP", -1, GENDER_NOT_APPLICABLE), bonus);
@@ -5753,9 +5814,10 @@ static void AddItemSpellStatLines(CGTooltip* tooltip, const ItemStats_C* stats, 
 
                 if (format[0]) {
                     if (SStrStr(format, "%c")) {
-                        SStrPrintf(bonus, sizeof(bonus), format, 2 * (value <= 0) + '+', abs(value));
+                    int64_t absoluteValue = value < 0 ? -value : value;
+                    SStrPrintfInt64(bonus, sizeof(bonus), format, 2 * (value <= 0) + '+', absoluteValue);
                     } else {
-                        SStrPrintf(bonus, sizeof(bonus), format, value);
+                    SStrPrintfInt64(bonus, sizeof(bonus), format, value);
                     }
 
                     SStrPrintf(text, sizeof(text), "%s %s", FrameScript_GetText("ITEM_SPELL_TRIGGER_ONEQUIP", -1, GENDER_NOT_APPLICABLE), bonus);

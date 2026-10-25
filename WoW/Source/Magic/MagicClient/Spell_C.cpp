@@ -424,15 +424,15 @@ bool Spell_C_HaveSpellPower(CGUnit_C* unit, const SpellRec* spell) {
 
     if (powerType == POWER_TYPE_HEALTH) {
         int32_t cost = Spell_C_GetPowerCost(spell, unit);
-        return cost < static_cast<int32_t>(unit->GetPredictedHealth());
+        return cost < 0 || static_cast<uint32_t>(cost) < unit->GetPredictedHealth();
     }
 
     if (powerType == POWER_TYPE_RUNES) {
         return unit->IsActivePlayer() && CGRuneInfo::HasRunesForSpell(spell->m_id, nullptr);
     }
 
-    int32_t power = unit->GetPredictedPower(powerType);
-    return Spell_C_GetPowerCost(spell, unit) <= power;
+    int32_t cost = Spell_C_GetPowerCost(spell, unit);
+    return cost <= 0 || static_cast<uint32_t>(cost) <= unit->GetPredictedPower(powerType);
 }
 
 // VERIFY: 7772af94 manual
@@ -1142,10 +1142,10 @@ int32_t Packet_Group_30(void* param, NETMESSAGE msgId, uint32_t time, CDataStore
 
 // VERIFY: 2ad579bf manual
 // OFFSET: 0x00722C50
-void CGUnit_C::SetPredictedPower(POWER_TYPE powerType, int32_t value) {
+void CGUnit_C::SetPredictedPower(POWER_TYPE powerType, uint32_t value) {
     uint32_t maximum = powerType == POWER_TYPE_HEALTH ? this->m_unit->m_unitFieldMaxhealth : this->m_unit->m_unitFieldMaxpower[powerType];
 
-    if (static_cast<int32_t>(maximum) < value) {
+    if (maximum < value) {
         value = maximum;
     }
 
@@ -1155,7 +1155,7 @@ void CGUnit_C::SetPredictedPower(POWER_TYPE powerType, int32_t value) {
 
     this->m_predictedPower[powerType] = value;
 
-    if (static_cast<uint32_t>(value) == maximum) {
+    if (value == maximum) {
         Script_SendUnitSignal(this->m_obj->m_guid, powerType + 19);
     }
 
@@ -2736,7 +2736,7 @@ bool Spell_C::HandleSpriteRay(const WOWGUID& guid, bool checkRange) {
             }
         }
 
-        int32_t health = data->m_unitFieldHealth;
+        uint32_t health = data->m_unitFieldHealth;
         uint32_t needTargets = s_needTargets;
 
         if (health <= 0) {
@@ -7138,7 +7138,7 @@ bool Spell_C_RangeCheckSelected(CGUnit_C* caster, const SpellRec* spell, WOWGUID
             return false;
         }
 
-        int32_t health = unit->m_unit->m_unitFieldHealth;
+        uint32_t health = unit->m_unit->m_unitFieldHealth;
 
         if (health <= 0 && !(unit->m_unit->m_unitDynamicFlags & 0x20) && !(needTargets & 0x8600) && !(spell->m_attributesExB & 0x1)) {
             return false;
@@ -8616,7 +8616,7 @@ bool Spell_C_HandleSpriteClick(CGObject_C* object, PendingSpellCast* cast) {
             return false;
         }
 
-        int32_t health = unit->m_unit->m_unitFieldHealth;
+        uint32_t health = unit->m_unit->m_unitFieldHealth;
 
         if (health <= 0 && !(unit->m_unit->m_unitDynamicFlags & 0x20) && !(s_needTargets & 0x8600) && !(spell.m_attributesExB & 0x1)) {
             return false;

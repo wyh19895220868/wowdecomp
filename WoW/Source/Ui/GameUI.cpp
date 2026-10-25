@@ -1803,6 +1803,7 @@ void CGGameUI::InitializeFrameXML() {
 
     BugReportRegister();
     LoadAddOns(&status);
+    NativeUIInitializeFrameXML();
     FrameXML_RegisterLoadProgressCallback(nullptr, nullptr, 0);
     CGGameUI::Initialize();
     LoadSavedVariables(&status);
@@ -4547,7 +4548,7 @@ void CGGameUI::ShowSpellMissFeedback(const WOWGUID& guid, int32_t reason) {
 
 // VERIFY: a27dcaba manual
 // OFFSET: 0x00513480
-void CGGameUI::ShowHealingFeedback(const WOWGUID& guid, int32_t amount, bool crit) {
+void CGGameUI::ShowHealingFeedback(const WOWGUID& guid, uint32_t amount, bool crit) {
     if (amount) {
         CGGameUI::SignalUnitCombat(guid, "HEAL", amount, GetPhysicalDamageClassMask(), crit ? 0x200 : 0);
     }
@@ -4558,10 +4559,10 @@ void CGGameUI::ShowEnergizeFeedback(const WOWGUID& guid, int32_t powerType, int3
 
 // VERIFY: c776ed02 auto
 // OFFSET: 0x005132C0
-void CGGameUI::SignalUnitCombat(const WOWGUID& guid, const char* action, int32_t amount, uint32_t schoolMask, uint32_t flags) {
+void CGGameUI::SignalUnitCombat(const WOWGUID& guid, const char* action, uint32_t amount, uint32_t schoolMask, uint32_t flags) {
     const char* modifier = "";
 
-    if (amount <= 0) {
+    if (amount == 0) {
         if (flags & 0x20) {
             modifier = "ABSORB";
         } else if (flags & 0x2000) {
@@ -4581,7 +4582,7 @@ void CGGameUI::SignalUnitCombat(const WOWGUID& guid, const char* action, int32_t
     char** tokens = Script_GetTokenIDsFromGUID(guid, &count);
 
     for (int32_t i = 0; i < count; i++) {
-        FrameScript_SignalEvent(SCRIPT_EVENT_UNIT_COMBAT, "%s%s%s%d%d", tokens[i], action, modifier, amount, schoolMask);
+        FrameScript_SignalEvent(SCRIPT_EVENT_UNIT_COMBAT, "%s%s%s%u%u", tokens[i], action, modifier, amount, schoolMask);
     }
 }
 
@@ -4661,7 +4662,7 @@ void CGGameUI::CastSpiritHealSpell() {
 
 // VERIFY: cd2d4923 auto
 // OFFSET: 0x00513380
-void CGGameUI::ShowCombatFeedback(const WOWGUID& guid, int32_t amount, uint32_t schoolMask, uint32_t flags) {
+void CGGameUI::ShowCombatFeedback(const WOWGUID& guid, uint32_t amount, uint32_t schoolMask, uint32_t flags) {
     CGGameUI::SignalUnitCombat(guid, "WOUND", amount, schoolMask, flags);
 }
 
@@ -5560,7 +5561,7 @@ int32_t CGGameUI::StartCinematicCamera() {
 
 // VERIFY: 60912e63 manual
 // OFFSET: 0x005264F0
-void CGGameUI::OpenLoot(CGObject_C* object, int32_t coins, LOOT_ACQUIRE lootAcquire) {
+void CGGameUI::OpenLoot(CGObject_C* object, uint32_t coins, LOOT_ACQUIRE lootAcquire) {
     if (object->m_obj->m_type & TYPE_UNIT) {
         CGGameUI::Target(object->m_obj->m_guid);
     }
@@ -5629,7 +5630,7 @@ void CGGameUI::CloseLoot(bool a1, bool a2, bool a3) {
 
     CGLootInfo::SetObject(nullptr, 0, LOOT_ACQUIRE_FAILED);
 
-    if (object && (object->m_obj->m_type & TYPE_UNIT) && static_cast<int32_t>(static_cast<CGUnit_C*>(object)->m_unit->m_unitFieldHealth) <= 0) {
+    if (object && (object->m_obj->m_type & TYPE_UNIT) && static_cast<CGUnit_C*>(object)->m_unit->m_unitFieldHealth == 0) {
         CGGameUI::ClearTarget(guid, 1);
     }
 
@@ -7443,6 +7444,7 @@ void TaintEventCallback(lua_State* L, int32_t event, const char* name, const cha
 // VERIFY: 559cc5a7 manual
 // OFFSET: 0x00528F00
 void CGGameUI::Shutdown() {
+    NativeUIShutdownFrameXML();
     CGGameUI::m_accountDataGeneration++;
     g_theGxDevicePtr->RemoveTextureRecreationCallback(UpdateAllPortraits);
     g_theGxDevicePtr->RemoveDeviceRestoredCallback(UpdateAllPortraits);

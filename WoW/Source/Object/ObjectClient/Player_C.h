@@ -303,7 +303,7 @@ class CGPlayer_C : public CGUnit_C, public CGPlayer {
     void OpenLootItem(CGItem_C* item);
     void OpenWrappedItem(CGItem_C* item);
     static void StartGiftWrap(CGItem_C* item);
-    uint32_t GetCoinage() const;
+    uint64_t GetCoinage() const;
     uint32_t GetCreatureTracking() const;
     uint32_t GetCurrentXP() const;
     uint32_t GetNextLevelXP() const;

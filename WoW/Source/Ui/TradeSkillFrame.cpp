@@ -18,6 +18,8 @@
 #include "WoW/Source/ObjectMgrClient/ObjectMgrClient.h"
 #include "WoW/Source/Ui/ScriptEvents.h"
 #include <cstdio>
+#include <cstdint>
+#include <cstddef>
 #include "WoW/Source/Client.h"
 #include "WoW/Source/DB/Rec/GemPropertiesRec.h"
 #include "WoW/Source/DB/Rec/ItemSubClassRec.h"
@@ -28,6 +30,62 @@
 #include "WoW/Source/Game/ValidateName.h"
 #include "WoW/Source/Ui/QuestTextParser.h"
 #include "WoW/Source/UIUtil/Tooltip.h"
+
+static void ExpandTradeSkillInt64Format(const char* format, char* expanded, size_t size) {
+    if (!format || !size) {
+        return;
+    }
+
+    size_t out = 0;
+
+    for (size_t i = 0; format[i] && out + 1 < size; i++) {
+        if (format[i] == '%' && format[i + 1] == '%') {
+            if (out + 2 >= size) {
+                break;
+            }
+
+            expanded[out++] = '%';
+            expanded[out++] = '%';
+            i++;
+            continue;
+        }
+
+        if (format[i] != '%') {
+            expanded[out++] = format[i];
+            continue;
+        }
+
+        size_t conversion = i + 1;
+
+        while (format[conversion] && (format[conversion] < 'A' || format[conversion] > 'z')) {
+            conversion++;
+        }
+
+        if (format[conversion] == 'd' || format[conversion] == 'i') {
+            if (out + 5 >= size) {
+                break;
+            }
+
+            expanded[out++] = '%';
+            expanded[out++] = 'I';
+            expanded[out++] = '6';
+            expanded[out++] = '4';
+            expanded[out++] = 'd';
+            i = conversion;
+        } else {
+            expanded[out++] = format[i];
+        }
+    }
+
+    expanded[out] = '\0';
+}
+
+template <typename... Args>
+static void SStrPrintfTradeSkillInt64(char* buffer, size_t size, const char* format, Args... args) {
+    char expanded[1024];
+    ExpandTradeSkillInt64Format(format, expanded, sizeof(expanded));
+    SStrPrintf(buffer, size, expanded, args...);
+}
 
 // STATIC: 0x00A1B640
 static const char s_base64Encode[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -1037,14 +1095,15 @@ bool Profession_FilterSpell(int32_t spellId, int32_t minLevel, int32_t maxLevel,
 
     if (stats) {
         for (uint32_t i = 0; i < 10; i++) {
-            int32_t value = stats->m_statValue[i];
+            int64_t value = static_cast<int64_t>(stats->m_statValue[i]);
 
             if (value <= 0 || static_cast<int32_t>(stats->m_statType[i]) < 0) {
                 continue;
             }
 
             SStrCopy(format, FrameScript_GetText(s_itemModTokens[stats->m_statType[i]], -1, GENDER_NOT_APPLICABLE), sizeof(format));
-            SStrPrintf(text, sizeof(text), format, value > 0 ? '+' : '-', abs(value));
+            int64_t absoluteValue = value < 0 ? -value : value;
+            SStrPrintfTradeSkillInt64(text, sizeof(text), format, value > 0 ? '+' : '-', absoluteValue);
             CaseAccentInsensitiveParse(text, sizeof(text), s_locale);
 
             if (SStrStr(text, name)) {
@@ -1063,7 +1122,7 @@ bool Profession_FilterSpell(int32_t spellId, int32_t minLevel, int32_t maxLevel,
 
         if (school <= 6) {
             for (school = 2; school <= 6; school++) {
-                int32_t value = stats->m_resistances[school];
+                int64_t value = stats->m_resistances[school];
 
                 if (!value) {
                     continue;
@@ -1074,7 +1133,8 @@ bool Profession_FilterSpell(int32_t spellId, int32_t minLevel, int32_t maxLevel,
                 SStrPrintf(token, sizeof(token), "SPELL_SCHOOL%d_CAP", school);
                 SStrCopy(schoolName, FrameScript_GetText(token, -1, GENDER_NOT_APPLICABLE), sizeof(schoolName));
                 SStrCopy(format, FrameScript_GetText("ITEM_RESIST_SINGLE", -1, GENDER_NOT_APPLICABLE), sizeof(format));
-                SStrPrintf(text, sizeof(text), format, value > 0 ? '+' : '-', abs(value), schoolName);
+                int64_t absoluteValue = value < 0 ? -value : value;
+                SStrPrintfTradeSkillInt64(text, sizeof(text), format, value > 0 ? '+' : '-', absoluteValue, schoolName);
                 CaseAccentInsensitiveParse(text, sizeof(text), s_locale);
 
                 if (SStrStr(text, name)) {

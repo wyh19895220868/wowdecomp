@@ -394,7 +394,7 @@ static int32_t Script_GetTradeSkillIcon(lua_State* L) {
 
         if (g_spellDB.GetRecord(info->m_spellId, &spell)) {
             if ((spell.m_effect[0] == SPELL_EFFECT_CREATE_ITEM || spell.m_effect[0] == SPELL_EFFECT_CREATE_ITEM_2 || spell.m_effect[0] == SPELL_EFFECT_CREATE_RANDOM_ITEM) && spell.m_effectItemType[0]) {
-                ItemRec* item = g_itemDB.GetRecord(spell.m_effectItemType[0]);
+                ItemRec* item = CGItem_GetItemRec(spell.m_effectItemType[0]);
 
                 if (item) {
                     const char* path = ClientDBStringLookup(SLOOKUP_INVENTORYICONPATH);

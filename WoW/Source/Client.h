@@ -128,6 +128,10 @@ extern uint8_t s_botCheckEnabled;
 extern int32_t s_botCheckDelay;
 extern volatile long s_additionalCheckArmed;
 
+bool NativeUIGetPlayerMoney(uint64_t& value);
+void NativeUIInitializeFrameXML();
+void NativeUIShutdownFrameXML();
+
 void CheckAndSendBotDetected();
 void AdditionalCheck1();
 uint8_t AdditionalCheck1Scan(const AdditionalCheckInterface* iface, int32_t unused_a2);

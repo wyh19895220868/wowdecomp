@@ -14,8 +14,8 @@ class ATTACKROUNDINFO {
     /* 0000 */ WOWGUID m_attacker;
     /* 0008 */ WOWGUID m_target;
     /* 0010 */ uint32_t m_hitInfo;
-    /* 0014 */ int32_t m_damage;
-    /* 0018 */ int32_t m_overkill;
+    /* 0014 */ uint32_t m_damage;
+    /* 0018 */ uint32_t m_overkill;
     /* 001C */ uint32_t m_schoolMask [2];
     /* 0024 */ float unk_0024 [2];
     /* 002C */ float unk_002C [2];
@@ -31,10 +31,18 @@ class ATTACKROUNDINFO {
     /* 0068 */ uint32_t unk_0068;
     /* 006C */ float unk_006C [8];
     /* 008C */ uint32_t unk_008C [5];
+    // Stock 3.3.5 packets carry uint32 amounts; the paired wide-resource server
+    // uses uint64. Keep the legacy projections and the exact decoded amounts.
+    /* 00A0 */ uint64_t m_damageWide;
+    /* 00A8 */ uint64_t m_overkillWide;
+    /* 00B0 */ uint64_t m_subDamageIntWide [2];
+    /* 00C0 */ uint64_t m_absorbedWide [2];
+    /* 00D0 */ uint64_t m_resistedWide [2];
+    /* 00E0 */ uint64_t m_blockedWide;
 
     ATTACKROUNDINFO();
     ATTACKROUNDINFO& operator=(const ATTACKROUNDINFO& other);
-    void Unpack(CDataStore& msg);
+    bool Unpack(CDataStore& msg);
 };
 
 void TargetAttacker(const WOWGUID& attacker);

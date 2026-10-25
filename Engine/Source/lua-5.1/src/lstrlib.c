@@ -779,7 +779,7 @@ static int str_gsub (lua_State *L) {
 ** maximum size of each format specification (such as '%-099.99d')
 ** (+10 accounts for %99.99x plus margin of error)
 */
-#define MAX_FORMAT	(sizeof(FLAGS) + sizeof(LUA_INTFRMLEN) + 10)
+#define MAX_FORMAT	(sizeof(FLAGS) + sizeof(LUA_INTFRMLEN) + sizeof(LUA_DECIMALFRMLEN) + 10)
 
 
 // VERIFY: 8f221840 manual
@@ -813,12 +813,13 @@ static void addquoted (lua_State *L, luaL_Buffer *b, int arg) {
   luaL_addchar(b, '"');
 }
 
-static void addintlen (char *form) {
+static void addintlen (char *form, const char *modifier) {
   size_t l = strlen(form);
+  size_t modifierLength = strlen(modifier);
   char spec = form[l - 1];
-  strcpy(form + l - 1, LUA_INTFRMLEN);
-  form[l + sizeof(LUA_INTFRMLEN) - 2] = spec;
-  form[l + sizeof(LUA_INTFRMLEN) - 1] = '\0';
+  memcpy(form + l - 1, modifier, modifierLength);
+  form[l + modifierLength - 1] = spec;
+  form[l + modifierLength] = '\0';
 }
 
 
@@ -870,12 +871,17 @@ static int str_format (lua_State *L) {
           break;
         }
         case 'd':  case 'i': {
-          addintlen(form);
-          sprintf(buff, form, (LUA_INTFRM_T)luaL_checknumber(L, arg));
+          addintlen(form, LUA_DECIMALFRMLEN);
+          sprintf(buff, form, (LUA_DECIMALFRM_T)luaL_checknumber(L, arg));
           break;
         }
-        case 'o':  case 'u':  case 'x':  case 'X': {
-          addintlen(form);
+        case 'u': {
+          addintlen(form, LUA_DECIMALFRMLEN);
+          sprintf(buff, form, (unsigned LUA_DECIMALFRM_T)luaL_checknumber(L, arg));
+          break;
+        }
+        case 'o':  case 'x':  case 'X': {
+          addintlen(form, LUA_INTFRMLEN);
           sprintf(buff, form, (unsigned LUA_INTFRM_T)luaL_checknumber(L, arg));
           break;
         }

@@ -534,7 +534,7 @@ void CGBarberShop::ApplyAppearanceChange() {
         return;
     }
 
-    uint32_t coinage = player->GetCoinage();
+    uint64_t coinage = player->GetCoinage();
 
     if (static_cast<uint32_t>(CGBarberShop::GetTotalCost()) > coinage) {
         CGGameUI::DisplayError(ERR_NOT_ENOUGH_MONEY);

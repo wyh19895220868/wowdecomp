@@ -422,8 +422,8 @@ int32_t UnitPowerUpdateHandler(WOWGUID guid, uint32_t fieldOffset, uint32_t fiel
     POWER_TYPE powerType = static_cast<POWER_TYPE>((fieldOffset - offsetof(CGUnitData, m_unitFieldPower)) / sizeof(uint32_t));
 
     if (g_predictedPowerCVar->m_intValue && (guid == ClntObjMgrGetActivePlayer() || guid == CGPetInfo::GetPet(0))) {
-        int32_t power = powerType == POWER_TYPE_HEALTH ? unit->m_unit->m_unitFieldHealth : unit->m_unit->m_unitFieldPower[powerType];
-        int32_t predicted = g_predictedPowerCVar->m_intValue ? unit->m_predictedPower[powerType] : (powerType == POWER_TYPE_HEALTH ? unit->m_unit->m_unitFieldHealth : unit->m_unit->m_unitFieldPower[powerType]);
+        uint32_t power = powerType == POWER_TYPE_HEALTH ? unit->m_unit->m_unitFieldHealth : unit->m_unit->m_unitFieldPower[powerType];
+        uint32_t predicted = g_predictedPowerCVar->m_intValue ? unit->m_predictedPower[powerType] : (powerType == POWER_TYPE_HEALTH ? unit->m_unit->m_unitFieldHealth : unit->m_unit->m_unitFieldPower[powerType]);
 
         if (power <= predicted) {
             return 1;
@@ -689,19 +689,19 @@ int32_t UnitHealthUpdateHandler(WOWGUID guid, uint32_t fieldOffset, uint32_t fie
     CGUnit_C* unit = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(guid, TYPE_UNIT, __FILE__, __LINE__));
     unit->m_predictedHealth = unit->m_unit->m_unitFieldHealth;
 
-    if (!(static_cast<float>(unit->m_unit->m_unitFieldHealth) / static_cast<int32_t>(unit->m_unit->m_unitFieldMaxhealth) < 0.2f) || unit->IsDeadOrGhost()) {
+    if (!(static_cast<float>(unit->m_unit->m_unitFieldHealth) / static_cast<float>(unit->m_unit->m_unitFieldMaxhealth) < 0.2f) || unit->IsDeadOrGhost()) {
         unit->m_clientFlags &= ~0x2;
     } else if (unit->m_bloodlevels) {
         unit->m_clientFlags |= 0x2;
     }
 
-    int32_t oldHealth = *static_cast<const int32_t*>(oldValue);
+    uint32_t oldHealth = *static_cast<const uint32_t*>(oldValue);
 
     if (oldHealth > unit->m_unit->m_unitFieldHealth && unit->m_namePlateFrame) {
         unit->m_namePlateFrame->TriggerDamageFeedback();
     }
 
-    int32_t health = unit->m_unit->m_unitFieldHealth;
+    uint32_t health = unit->m_unit->m_unitFieldHealth;
 
     if (health <= 0) {
         if (oldHealth > 0) {
@@ -5081,7 +5081,7 @@ void CGUnit_C::RegisterMirrorHandlers() {
 
     ClntObjMgrSetTypeMirrorHandler(ID_UNIT, offsetof(CGUnitData, m_unitFieldLevel), sizeof(uint32_t), UnitLevelUpdateHandler, nullptr, HANDLER_PRIORITY_NORMAL, 0);
     ClntObjMgrSetTypeMirrorHandler(ID_OBJECT, offsetof(CGObjectData, m_entryID), sizeof(uint32_t), UnitModeUpdateHandler, nullptr, HANDLER_PRIORITY_NORMAL, 0);
-    ClntObjMgrSetTypeMirrorHandler(ID_UNIT, offsetof(CGUnitData, m_unitFieldHealth), sizeof(int32_t), UnitHealthUpdateHandler, nullptr, HANDLER_PRIORITY_NORMAL, 0);
+    ClntObjMgrSetTypeMirrorHandler(ID_UNIT, offsetof(CGUnitData, m_unitFieldHealth), sizeof(uint32_t), UnitHealthUpdateHandler, nullptr, HANDLER_PRIORITY_NORMAL, 0);
 
     for (uint32_t offset = offsetof(CGUnitData, m_unitFieldMaxpower); offset < offsetof(CGUnitData, m_unitFieldMaxpower) + sizeof(CGUnitData::m_unitFieldMaxpower); offset += sizeof(uint32_t)) {
         ClntObjMgrSetTypeMirrorHandler(ID_UNIT, offset - (offsetof(CGUnitData, m_unitFieldMaxpower) - offsetof(CGUnitData, m_unitFieldPower)), sizeof(uint32_t), UnitPowerUpdateHandler, nullptr, HANDLER_PRIORITY_NORMAL, 0);
@@ -6257,7 +6257,7 @@ void CGUnit_C::InitWheels() {
 
 // VERIFY: 3f9e9d5b auto
 // OFFSET: 0x00716050
-void CGUnit_C::SetPredictedHealth(int32_t health) {
+void CGUnit_C::SetPredictedHealth(uint32_t health) {
     this->m_predictedHealth = health;
 }
 
@@ -7040,17 +7040,17 @@ float CGUnit_C::GetTrueScale() const {
 
 // VERIFY: bbc73873 manual
 // OFFSET: 0x0071C260
-void CGUnit_C::ModifyPredictedHealth(int32_t delta) {
+void CGUnit_C::ModifyPredictedHealth(int64_t delta) {
     if (delta < 0 && (this->m_unit->m_unitFieldFlags2 & 0x100)) {
         return;
     }
 
-    int32_t health = delta + this->m_predictedHealth;
+    int64_t health = static_cast<int64_t>(delta) + static_cast<int64_t>(this->m_predictedHealth);
 
     if (health < 1) {
         this->m_predictedHealth = 1;
     } else {
-        if (health > static_cast<int32_t>(this->m_unit->m_unitFieldMaxhealth)) {
+        if (health > static_cast<int64_t>(this->m_unit->m_unitFieldMaxhealth)) {
             health = this->m_unit->m_unitFieldMaxhealth;
         }
 
@@ -9484,23 +9484,7 @@ const CGUnitVirtualItem* CGUnit_C::GetDefendingItem() const {
 // VERIFY: dfd1f58b auto
 // OFFSET: 0x007161C0
 ATTACKROUNDINFO::ATTACKROUNDINFO() {
-    uint32_t* words = reinterpret_cast<uint32_t*>(this);
-
-    for (int32_t i = 0; i < 21; i++) {
-        words[i] = 0;
-    }
-
-    for (int32_t i = 0; i < 6; i++) {
-        words[21 + i] = 0;
-    }
-
-    for (int32_t i = 0; i < 8; i++) {
-        this->unk_006C[i] = 0.0f;
-    }
-
-    for (int32_t i = 0; i < 5; i++) {
-        this->unk_008C[i] = 0;
-    }
+    memset(this, 0, sizeof(*this));
 }
 
 // VERIFY: fd6d8103 manual
@@ -9623,7 +9607,7 @@ CGUnit_C::CGUnit_C(uint32_t time, const CClientObjCreate& create)
 
     this->SetClientInitData(create, false);
 
-    if (static_cast<float>(this->m_unit->m_unitFieldHealth) / static_cast<int32_t>(this->m_unit->m_unitFieldMaxhealth) < 0.2f && this->m_unit->m_unitFieldHealth > 0 && this->m_bloodlevels) {
+    if (static_cast<float>(this->m_unit->m_unitFieldHealth) / static_cast<float>(this->m_unit->m_unitFieldMaxhealth) < 0.2f && this->m_unit->m_unitFieldHealth > 0 && this->m_bloodlevels) {
         this->m_clientFlags |= 0x2;
     }
 
@@ -9644,7 +9628,7 @@ CGUnit_C::CGUnit_C(uint32_t time, const CClientObjCreate& create)
     this->InitPredictedPower();
 
     for (int32_t i = 0; i < NUM_VIRTUAL_MONSTER_SLOTS; i++) {
-        ItemRec* rec = g_itemDB.GetRecord(this->m_unit->m_unitVirtualItemSlotId[i]);
+        ItemRec* rec = CGItem_GetItemRec(this->m_unit->m_unitVirtualItemSlotId[i]);
         CGUnitVirtualItem item;
 
         if (rec) {
@@ -10098,7 +10082,7 @@ void CGUnit_C::Reenable() {
     this->m_powerRegenRemainder = 0;
     this->m_manaRegenInterruptTime = 0;
 
-    if (static_cast<float>(this->m_unit->m_unitFieldHealth) / static_cast<int32_t>(this->m_unit->m_unitFieldMaxhealth) < 0.2f && !this->IsDeadOrGhost() && this->m_bloodlevels) {
+    if (static_cast<float>(this->m_unit->m_unitFieldHealth) / static_cast<float>(this->m_unit->m_unitFieldMaxhealth) < 0.2f && !this->IsDeadOrGhost() && this->m_bloodlevels) {
         this->m_clientFlags |= 0x2;
     }
 
@@ -10121,7 +10105,7 @@ void CGUnit_C::Reenable() {
     this->ShowLootEffect();
 
     for (int32_t i = 0; i < NUM_VIRTUAL_MONSTER_SLOTS; i++) {
-        ItemRec* rec = g_itemDB.GetRecord(this->m_unit->m_unitVirtualItemSlotId[i]);
+        ItemRec* rec = CGItem_GetItemRec(this->m_unit->m_unitVirtualItemSlotId[i]);
         CGUnitVirtualItem item;
 
         if (rec) {
@@ -11953,7 +11937,7 @@ bool CGUnit_C::IsOutdoors() const {
 
 // VERIFY: b89ed3c2 auto
 // OFFSET: 0x0071C2C0
-int32_t CGUnit_C::GetPredictedHealth() const {
+uint32_t CGUnit_C::GetPredictedHealth() const {
     if (g_predictedHealthCVar->m_intValue) {
         return this->m_predictedHealth;
     }
@@ -11963,7 +11947,7 @@ int32_t CGUnit_C::GetPredictedHealth() const {
 
 // VERIFY: cbdca188 auto
 // OFFSET: 0x0071C2E0
-int32_t CGUnit_C::GetPredictedPower(POWER_TYPE powerType) const {
+uint32_t CGUnit_C::GetPredictedPower(POWER_TYPE powerType) const {
     if (g_predictedPowerCVar->m_intValue) {
         return this->m_predictedPower[powerType];
     }
@@ -13746,7 +13730,7 @@ void CGUnit_C::SetSheatheState(uint32_t showWeapons, int32_t instant, int32_t no
 
 // VERIFY: 4d7f7127 manual
 // OFFSET: 0x00722CF0
-void CGUnit_C::ModifyPredictedPower(POWER_TYPE powerType, int32_t delta) {
+void CGUnit_C::ModifyPredictedPower(POWER_TYPE powerType, int64_t delta) {
     if (delta < 0 && (this->m_unit->m_unitFieldFlags2 & 0x100)) {
         return;
     }
@@ -13755,14 +13739,14 @@ void CGUnit_C::ModifyPredictedPower(POWER_TYPE powerType, int32_t delta) {
         return;
     }
 
-    int32_t value = delta + this->m_predictedPower[powerType];
+    int64_t value = static_cast<int64_t>(delta) + static_cast<int64_t>(this->m_predictedPower[powerType]);
 
     if (value < 0) {
         this->SetPredictedPower(powerType, 0);
         return;
     }
 
-    int32_t maximum = powerType == POWER_TYPE_HEALTH ? this->m_unit->m_unitFieldMaxhealth : this->m_unit->m_unitFieldMaxpower[powerType];
+    uint32_t maximum = powerType == POWER_TYPE_HEALTH ? this->m_unit->m_unitFieldMaxhealth : this->m_unit->m_unitFieldMaxpower[powerType];
 
     if (value > maximum) {
         if (powerType == POWER_TYPE_HEALTH) {
@@ -15075,7 +15059,7 @@ void CGUnit_C::AddWorldText(const WOWGUID& source, MISS_REASON reason, const Spe
 
 // VERIFY: 813b4b44 manual
 // OFFSET: 0x00722340
-void CGUnit_C::AddWorldDamageText(const WOWGUID& source, int32_t amount, const SpellRec* spell, bool crit, bool periodic, bool spellColor) {
+void CGUnit_C::AddWorldDamageText(const WOWGUID& source, uint32_t amount, const SpellRec* spell, bool crit, bool periodic, bool spellColor) {
     bool melee = !spellColor && (!spell || (spell->m_attributesExC & 0x8000));
     bool isPlayer;
 
@@ -15084,7 +15068,7 @@ void CGUnit_C::AddWorldDamageText(const WOWGUID& source, int32_t amount, const S
     }
 
     char text[32];
-    SStrPrintf(text, sizeof(text), "%d", amount);
+    SStrPrintf(text, sizeof(text), "%u", amount);
     const CImVector* color;
 
     if (melee) {
@@ -17914,10 +17898,10 @@ void CGUnit_C::DoPowerRegen(POWER_TYPE powerType, uint32_t elapsed) {
     float delta = regen * static_cast<float>(elapsed) * 0.001f;
 
     if (delta >= 0.0f) {
-        int32_t maxPower = powerType == POWER_TYPE_HEALTH ? this->m_unit->m_unitFieldMaxhealth : this->m_unit->m_unitFieldMaxpower[powerType];
+        uint32_t maxPower = powerType == POWER_TYPE_HEALTH ? this->m_unit->m_unitFieldMaxhealth : this->m_unit->m_unitFieldMaxpower[powerType];
 
         if (this->GetPredictedPower(powerType) < maxPower) {
-            int32_t predicted = this->GetPredictedPower(powerType);
+            uint32_t predicted = this->GetPredictedPower(powerType);
             this->m_powerRegenRemainder += static_cast<int32_t>(delta * 1000.0f);
             this->SetPredictedPower(powerType, predicted + this->m_powerRegenRemainder / 1000);
             this->m_powerRegenRemainder %= 1000;
@@ -17926,14 +17910,14 @@ void CGUnit_C::DoPowerRegen(POWER_TYPE powerType, uint32_t elapsed) {
     }
 
     if (delta < 0.0f && this->GetPredictedPower(powerType) > 0 && !(this->m_unit->m_unitFieldFlags2 & 0x100)) {
-        int32_t predicted = this->GetPredictedPower(powerType);
+        uint32_t predicted = this->GetPredictedPower(powerType);
         float value = delta + (static_cast<float>(this->m_powerRegenRemainder) * 0.001f + static_cast<float>(predicted));
 
         if (value < 0.0f) {
             value = 0.0f;
         }
 
-        int32_t power = CMath::ftrunc(value);
+        uint32_t power = static_cast<uint32_t>(CMath::ftrunc(value));
         this->SetPredictedPower(powerType, power);
         float remainder = value * 1000.0f - static_cast<float>(static_cast<uint32_t>(power * 1000));
         this->m_powerRegenRemainder = CMath::fint_(remainder - 0.5f);
@@ -18100,7 +18084,7 @@ void CGUnit_C::OnDynamicFlagsChanged(uint32_t oldFlags) {
         }
     }
 
-    if (static_cast<int32_t>(this->m_unit->m_unitFieldHealth) <= 0 && (this->m_unit->m_unitDynamicFlags & 1)) {
+    if (this->m_unit->m_unitFieldHealth == 0 && (this->m_unit->m_unitDynamicFlags & 1)) {
         if (this->m_lootableTime) {
             this->ClearEffectList(0);
         }
@@ -18538,7 +18522,7 @@ void CGUnit_C::OnFlagChanged(uint32_t oldFlags) {
 
     if (this->m_obj->m_guid == ClntObjMgrGetActivePlayer()) {
         this->OnFlagChangedActivePlayer(flags, changed);
-    } else if (static_cast<int32_t>(this->m_unit->m_unitFieldHealth) > 0 && (changed & 0x400)) {
+    } else if (this->m_unit->m_unitFieldHealth > 0 && (changed & 0x400)) {
         this->UpdateBaseAnimation(0, -1);
     }
 
@@ -20454,7 +20438,7 @@ void CGUnit_C::AddWorldHonorGainText(int32_t honor, int32_t pvpRank, const char*
 
 // VERIFY: 5809ed27 auto
 // OFFSET: 0x00722440
-void CGUnit_C::AddWorldHealingText(const WOWGUID& source, int32_t amount, const SpellRec* spell, bool crit, int32_t unused_a6) {
+void CGUnit_C::AddWorldHealingText(const WOWGUID& source, uint32_t amount, const SpellRec* spell, bool crit, int32_t unused_a6) {
     bool isPlayer;
 
     if (!amount || this->m_obj->m_guid == CGUnit_C::s_activeMover || !IsOwnedByActivePlayer(source, &isPlayer) || !g_combatHealingCVar->m_intValue) {
@@ -20462,7 +20446,7 @@ void CGUnit_C::AddWorldHealingText(const WOWGUID& source, int32_t amount, const 
     }
 
     char text[32];
-    SStrPrintf(text, sizeof(text), "+%d", amount);
+    SStrPrintf(text, sizeof(text), "+%u", amount);
 
     if (isPlayer) {
         PlayerNameCreateText(this->m_nameDesc, crit ? WT_CRIT_HEAL : WT_HEAL, text, nullptr, nullptr);
@@ -21839,8 +21823,8 @@ UnitBloodRec* CGUnit_C::GetBloodRecord() {
 // VERIFY: ce51319d auto
 // OFFSET: 0x00725010
 void CGUnit_C::OnVirtualItemChanged(VIRTUAL_MONSTER_SLOT slot, int32_t oldItemId) {
-    ItemRec* oldRec = g_itemDB.GetRecord(oldItemId);
-    ItemRec* rec = g_itemDB.GetRecord(this->m_unit->m_unitVirtualItemSlotId[slot]);
+    ItemRec* oldRec = CGItem_GetItemRec(oldItemId);
+    ItemRec* rec = CGItem_GetItemRec(this->m_unit->m_unitVirtualItemSlotId[slot]);
     this->m_virtualItemDisplayId[slot] = rec ? rec->m_displayInfoID : 0;
     CGUnitVirtualItem item;
     item.m_pad[0] = 0;

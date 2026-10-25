@@ -1,5 +1,6 @@
 #include "UnitCombatLog_C.h"
 #include <cstring>
+#include <string>
 #include "Engine/Source/FrameScript/FrameScript.h"
 #include "Engine/Source/Storm/H/storm.h"
 #include "WoW/Source/DB/DBClient/CreatureStats_C.h"
@@ -39,6 +40,12 @@
 #include "Engine/Source/Base/ConvertUTF.h"
 #include "WoW/Source/Object/CreatureStats.h"
 #include "WoW/Source/DB/Rec/SummonPropertiesRec.h"
+
+static constexpr uint64_t kCombatLogWideThreshold = 0x7FFFFFFFull;
+
+static uint32_t ClampNativeUIAmount(uint64_t value) {
+    return value > 0xFFFFFFFFull ? 0xFFFFFFFFu : static_cast<uint32_t>(value);
+}
 
 // STATIC: 0x00ADB758
 static const char* s_combatLogEventNames[50] = {
@@ -188,6 +195,10 @@ const char* g_spellMissStrings[12] = { "NONE", "MISS", "RESIST", "DODGE", "PARRY
 // STATIC: 0x00AD671C
 static const char* s_environmentalDamageTypes[6] = { "FATIGUE", "DROWNING", "FALLING", "LAVA", "SLIME", "FIRE" };
 
+static void SendDamageEventWide(int32_t event, const WOWGUID& source, const WOWGUID& dest, const SpellRec* spell,
+    uint64_t damage, uint64_t overkill, uint32_t school, uint64_t resisted, uint64_t blocked, uint64_t absorbed,
+    bool crit, bool a11, bool a12, uint32_t timeOffset);
+
 // INLINED
 inline CombatLogEntry::CombatLogEntry() {
     this->m_infoFlags = 0;
@@ -201,6 +212,18 @@ inline CombatLogEntry::~CombatLogEntry() {
     }
 
     this->CancelPendingCallbacks();
+}
+
+// Keep the legacy numeric slots populated for old scripts, but let the
+// combat-log bridge select the exact decimal representation when a value does
+// not fit in the original 32-bit slot.
+void CombatLogEntry::SetWideValue(uint32_t index, const char* value) {
+    if (index >= 7 || !value) {
+        return;
+    }
+
+    SStrCopy(this->m_wideValues[index], value, sizeof(this->m_wideValues[index]));
+    this->m_wideValueMask |= static_cast<uint8_t>(1u << index);
 }
 
 // INLINED
@@ -245,10 +268,18 @@ void SendToCombatText(int32_t type, const char* text, int32_t amount) {
     FrameScript_SignalEvent(SCRIPT_EVENT_COMBAT_TEXT_UPDATE, "%s%s%d", s_combatTextTypes[type], text, amount);
 }
 
+void SendToCombatText(int32_t type, const char* text, uint32_t amount) {
+    FrameScript_SignalEvent(SCRIPT_EVENT_COMBAT_TEXT_UPDATE, "%s%s%u", s_combatTextTypes[type], text, amount);
+}
+
 // VERIFY: ec53185e auto
 // OFFSET: 0x0074D490
 void SendToCombatText(int32_t type, const char* text, int32_t amount, int32_t overflow) {
     FrameScript_SignalEvent(SCRIPT_EVENT_COMBAT_TEXT_UPDATE, "%s%s%d%d", s_combatTextTypes[type], text, amount, overflow);
+}
+
+void SendToCombatText(int32_t type, const char* text, uint32_t amount, uint32_t overflow) {
+    FrameScript_SignalEvent(SCRIPT_EVENT_COMBAT_TEXT_UPDATE, "%s%s%u%u", s_combatTextTypes[type], text, amount, overflow);
 }
 
 // VERIFY: 41c0dd5e auto
@@ -257,10 +288,18 @@ void SendToCombatText(int32_t type, int32_t amount, int32_t overflow) {
     FrameScript_SignalEvent(SCRIPT_EVENT_COMBAT_TEXT_UPDATE, "%s%d%d", s_combatTextTypes[type], amount, overflow);
 }
 
+void SendToCombatText(int32_t type, uint32_t amount, uint32_t overflow) {
+    FrameScript_SignalEvent(SCRIPT_EVENT_COMBAT_TEXT_UPDATE, "%s%u%u", s_combatTextTypes[type], amount, overflow);
+}
+
 // VERIFY: 832fb9f0 auto
 // OFFSET: 0x0074D4F0
 void SendToCombatText(int32_t type, int32_t amount) {
     FrameScript_SignalEvent(SCRIPT_EVENT_COMBAT_TEXT_UPDATE, "%s%d", s_combatTextTypes[type], amount);
+}
+
+void SendToCombatText(int32_t type, uint32_t amount) {
+    FrameScript_SignalEvent(SCRIPT_EVENT_COMBAT_TEXT_UPDATE, "%s%u", s_combatTextTypes[type], amount);
 }
 
 // VERIFY: 4c54569b auto
@@ -304,26 +343,28 @@ void CombatLogEntry::Clear() {
     }
 
     this->m_infoFlags = 0;
+    memset(this->m_wideValues, 0, sizeof(this->m_wideValues));
+    this->m_wideValueMask = 0;
 }
 
 // VERIFY: 10cdb977 manual
 // OFFSET: 0x0074D980
-void CombatLogEntry::SetMissInfo(int32_t missType, int32_t amount) {
+void CombatLogEntry::SetMissInfo(int32_t missType, uint32_t amount) {
     this->m_infoFlags |= 0x4;
     this->m_info.m_values[0] = missType;
 
     switch (missType) {
         case 2:
             this->m_infoFlags |= 0x4000;
-            this->m_info.m_values[5] = amount;
+        this->m_info.m_unsignedValues[5] = amount;
             break;
         case 5:
             this->m_infoFlags |= 0x8000;
-            this->m_info.m_values[6] = amount;
+        this->m_info.m_unsignedValues[6] = amount;
             break;
         case 10:
             this->m_infoFlags |= 0x2000;
-            this->m_info.m_values[4] = amount;
+        this->m_info.m_unsignedValues[4] = amount;
             break;
     }
 }
@@ -951,47 +992,23 @@ void UnitCombatLog(const ATTACKROUNDINFO& info) {
 
     VICTIMSTATES victimState = info.m_victimState;
 
-    if ((victimState == VS_WOUND || victimState == VS_BLOCK) && info.m_damage) {
-        int32_t damage = info.m_damage;
-        int32_t resisted = 0;
-        int32_t absorbed = 0;
+    if ((victimState == VS_WOUND || victimState == VS_BLOCK) && info.m_damageWide) {
+        uint64_t resisted = 0;
+        uint64_t absorbed = 0;
 
         for (uint32_t i = 0; i < 2 && info.m_schoolMask[i]; i++) {
-            resisted += info.m_resisted[i];
-            absorbed += info.m_absorbed[i];
+            resisted += info.m_resistedWide[i];
+            absorbed += info.m_absorbedWide[i];
         }
 
         WOWGUID target = info.m_target;
         bool crushing = (info.m_hitInfo & 0x20000) != 0;
         bool glancing = (info.m_hitInfo >> 16) & 1;
         bool critical = (info.m_hitInfo & 0x200) != 0;
-        int32_t blocked = info.m_blocked;
+        uint64_t blocked = info.m_blockedWide;
         uint32_t school = info.m_schoolMask[0];
-        int32_t overkill = info.m_overkill;
-        CombatLogEntry* entry = GetCombatLogEntry(info.m_attacker, target, 1, nullptr);
-        entry->m_infoFlags |= 0x10;
-        entry->m_info.m_values[2] = overkill;
-        entry->m_info.m_values[4] = absorbed;
-        entry->m_info.m_values[3] = school;
-        entry->m_info.m_values[6] = blocked;
-        entry->m_info.m_values[1] = damage;
-        entry->m_info.m_values[5] = resisted;
-        entry->m_infoBits = (entry->m_infoBits & ~0x7) | critical | ((glancing | (crushing << 1)) << 1);
-        QueueCombatLogEntry(entry, 0);
-
-        if (s_combatTextActiveUnit == target) {
-            if (resisted > 0) {
-                FrameScript_SignalEvent(SCRIPT_EVENT_COMBAT_TEXT_UPDATE, "%s%d%d", s_combatTextTypes[10], damage, resisted);
-            } else if (blocked) {
-                SendToCombatText(11, damage, blocked);
-            } else if (absorbed) {
-                SendToCombatText(12, damage, absorbed);
-            } else if (critical) {
-                SendToCombatText(1, damage);
-            } else {
-                SendToCombatText(2, damage);
-            }
-        }
+        SendDamageEventWide(1, info.m_attacker, target, nullptr, info.m_damageWide, info.m_overkillWide,
+            school, resisted, blocked, absorbed, critical, glancing, crushing, 0);
 
         return;
     }
@@ -1007,27 +1024,35 @@ void UnitCombatLog(const ATTACKROUNDINFO& info) {
             SendToCombatText(3);
         }
     } else if (info.m_hitInfo & 0x20) {
-        int32_t absorbed = 0;
+        uint64_t absorbed = 0;
 
         for (uint32_t i = 0; i < 2 && info.m_schoolMask[i]; i++) {
-            absorbed += info.m_absorbed[i];
+            absorbed += info.m_absorbedWide[i];
         }
 
         entry = GetCombatLogEntry(info.m_attacker, target, 2, nullptr);
-        entry->SetMissInfo(10, absorbed);
+        entry->SetMissInfo(10, ClampNativeUIAmount(absorbed));
+        if (absorbed > kCombatLogWideThreshold) {
+            std::string value = std::to_string(absorbed);
+            entry->SetWideValue(4, value.c_str());
+        }
 
         if (s_combatTextActiveUnit == target) {
             SendToCombatText(12);
         }
     } else if (info.m_hitInfo & 0x80) {
-        int32_t resisted = 0;
+        uint64_t resisted = 0;
 
         for (uint32_t i = 0; i < 2 && info.m_schoolMask[i]; i++) {
-            resisted += info.m_resisted[i];
+            resisted += info.m_resistedWide[i];
         }
 
         entry = GetCombatLogEntry(info.m_attacker, target, 2, nullptr);
-        entry->SetMissInfo(2, resisted);
+        entry->SetMissInfo(2, ClampNativeUIAmount(resisted));
+        if (resisted > kCombatLogWideThreshold) {
+            std::string value = std::to_string(resisted);
+            entry->SetWideValue(5, value.c_str());
+        }
 
         if (s_combatTextActiveUnit == target) {
             SendToCombatText(10);
@@ -1066,7 +1091,11 @@ void UnitCombatLog(const ATTACKROUNDINFO& info) {
         }
 
         entry = GetCombatLogEntry(info.m_attacker, target, 2, nullptr);
-        entry->SetMissInfo(missType, info.m_blocked);
+        entry->SetMissInfo(missType, ClampNativeUIAmount(info.m_blockedWide));
+        if (info.m_blockedWide > kCombatLogWideThreshold) {
+            std::string value = std::to_string(info.m_blockedWide);
+            entry->SetWideValue(6, value.c_str());
+        }
 
         if (s_combatTextActiveUnit == target) {
             SendToCombatText(textType);
@@ -1180,22 +1209,22 @@ void UnitCombatLogAuraDose(CGUnit_C* unit, const AuraData* aura, int32_t spellId
 
 // VERIFY: 7035a324 manual
 // OFFSET: 0x00752C90
-void UnitCombatLogDamageShield(const WOWGUID& victimGuid, const WOWGUID& casterGuid, int32_t spellId, int32_t damage, uint32_t overkill, uint32_t schoolMask) {
+void UnitCombatLogDamageShield(const WOWGUID& victimGuid, const WOWGUID& casterGuid, int32_t spellId, uint32_t damage, uint32_t overkill, uint32_t schoolMask) {
     SpellRec spell;
 
     if (g_spellDB.GetRecord(spellId, &spell) && !(spell.m_attributes & 0x180) && *spell.m_name) {
         CGUnit_C* caster = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(casterGuid, TYPE_UNIT, __FILE__, __LINE__));
 
         if (caster) {
-            caster->ModifyPredictedHealth(-damage);
+            caster->ModifyPredictedHealth(-static_cast<int64_t>(damage));
         }
 
         CombatLogEntry* entry = GetCombatLogEntry(victimGuid, casterGuid, 40, &spell);
         entry->m_infoFlags |= 0x10;
         entry->m_infoBits &= ~0x7;
-        entry->m_info.m_values[1] = damage;
-        entry->m_info.m_values[2] = overkill;
-        entry->m_info.m_values[3] = schoolMask;
+        entry->m_info.m_unsignedValues[1] = damage;
+        entry->m_info.m_unsignedValues[2] = overkill;
+        entry->m_info.m_unsignedValues[3] = schoolMask;
         entry->m_info.m_values[5] = 0;
         entry->m_info.m_values[6] = 0;
         entry->m_info.m_values[4] = 0;
@@ -1238,6 +1267,14 @@ WOWGUID StringToGuid(const char* string) {
 
 // VERIFY: 7da56105 manual
 // OFFSET: 0x0074E290
+static void PushCombatLogValue(lua_State* L, CombatLogEntry const* entry, uint32_t index) {
+    if (index < 7 && (entry->m_wideValueMask & static_cast<uint8_t>(1u << index))) {
+        lua_pushstring(L, entry->m_wideValues[index]);
+    } else {
+        lua_pushnumber(L, entry->m_info.m_unsignedValues[index]);
+    }
+}
+
 int32_t CombatLogEntry::PushEvent(lua_State* L) {
     char name[305];
     char guid[20];
@@ -1293,7 +1330,7 @@ int32_t CombatLogEntry::PushEvent(lua_State* L) {
 
     if (this->m_infoFlags & 0x1) {
         lua_checkstack(L, 1);
-        lua_pushinteger(L, this->m_info.m_values[0]);
+        PushCombatLogValue(L, this, 0);
         count++;
     }
 
@@ -1317,24 +1354,24 @@ int32_t CombatLogEntry::PushEvent(lua_State* L) {
 
     if (this->m_infoFlags & 0x10) {
         lua_checkstack(L, 9);
-        lua_pushnumber(L, this->m_info.m_values[1]);
-        lua_pushnumber(L, this->m_info.m_values[2]);
-        lua_pushinteger(L, this->m_info.m_values[3]);
+        PushCombatLogValue(L, this, 1);
+        PushCombatLogValue(L, this, 2);
+        lua_pushinteger(L, this->m_info.m_unsignedValues[3]);
 
-        if (this->m_info.m_values[5]) {
-            lua_pushnumber(L, this->m_info.m_values[5]);
+        if (this->m_info.m_unsignedValues[5]) {
+            PushCombatLogValue(L, this, 5);
         } else {
             lua_pushnil(L);
         }
 
-        if (this->m_info.m_values[6]) {
-            lua_pushnumber(L, this->m_info.m_values[6]);
+        if (this->m_info.m_unsignedValues[6]) {
+            PushCombatLogValue(L, this, 6);
         } else {
             lua_pushnil(L);
         }
 
-        if (this->m_info.m_values[4]) {
-            lua_pushnumber(L, this->m_info.m_values[4]);
+        if (this->m_info.m_unsignedValues[4]) {
+            PushCombatLogValue(L, this, 4);
         } else {
             lua_pushnil(L);
         }
@@ -1362,27 +1399,27 @@ int32_t CombatLogEntry::PushEvent(lua_State* L) {
 
     if (this->m_infoFlags & 0x2000) {
         lua_checkstack(L, 1);
-        lua_pushinteger(L, this->m_info.m_values[4]);
+        PushCombatLogValue(L, this, 4);
         count++;
     }
 
     if (this->m_infoFlags & 0x4000) {
         lua_checkstack(L, 1);
-        lua_pushinteger(L, this->m_info.m_values[5]);
+        PushCombatLogValue(L, this, 5);
         count++;
     }
 
     if (this->m_infoFlags & 0x8000) {
         lua_checkstack(L, 1);
-        lua_pushinteger(L, this->m_info.m_values[6]);
+        PushCombatLogValue(L, this, 6);
         count++;
     }
 
     if (this->m_infoFlags & 0x20) {
         lua_checkstack(L, 4);
-        lua_pushnumber(L, this->m_info.m_values[0]);
-        lua_pushnumber(L, this->m_info.m_values[1]);
-        lua_pushnumber(L, this->m_info.m_values[2]);
+        PushCombatLogValue(L, this, 0);
+        PushCombatLogValue(L, this, 1);
+        PushCombatLogValue(L, this, 2);
 
         if (static_cast<uint8_t>(this->m_info.m_values[3])) {
             lua_pushnumber(L, 1.0);
@@ -1395,8 +1432,8 @@ int32_t CombatLogEntry::PushEvent(lua_State* L) {
 
     if (this->m_infoFlags & 0x40) {
         lua_checkstack(L, 2);
-        lua_pushnumber(L, this->m_info.m_values[0]);
-        lua_pushnumber(L, this->m_info.m_values[1]);
+        PushCombatLogValue(L, this, 0);
+        lua_pushnumber(L, this->m_info.m_unsignedValues[1]);
         count += 2;
     }
 
@@ -1641,13 +1678,13 @@ void UnitCombatLogInterrupt(const WOWGUID& casterGuid, const WOWGUID& targetGuid
 
 // VERIFY: 130013bd auto
 // OFFSET: 0x00752520
-void CombatLog::AddSpellDamageEntry(const WOWGUID& source, const WOWGUID& dest, int32_t spellId, int32_t damage, uint32_t timeOffset) {
+void CombatLog::AddSpellDamageEntry(const WOWGUID& source, const WOWGUID& dest, int32_t spellId, uint32_t damage, uint32_t timeOffset) {
     SpellRec spell;
 
     if (g_spellDB.GetRecord(spellId, &spell) && !(spell.m_attributes & 0x180) && *spell.m_name && damage) {
         CombatLogEntry* entry = GetCombatLogEntry(source, dest, 18, &spell);
         entry->m_infoFlags |= 0x1;
-        entry->m_info.m_values[0] = damage;
+        entry->m_info.m_unsignedValues[0] = damage;
         QueueCombatLogEntry(entry, timeOffset);
 
         if (s_combatTextActiveUnit == dest) {
@@ -1808,7 +1845,7 @@ int32_t CombatLog::HandleSpellLogExecute(CDataStore* msg, int32_t timeOffset) {
 
 // VERIFY: ae480a8e manual
 // OFFSET: 0x00751F70
-void UnitCombatLogHeal(const WOWGUID& casterGuid, const WOWGUID& targetGuid, int32_t spellId, int32_t amount, int32_t overheal, int32_t absorbed, bool crit, bool periodic, uint32_t timeOffset) {
+void UnitCombatLogHeal(const WOWGUID& casterGuid, const WOWGUID& targetGuid, int32_t spellId, uint32_t amount, uint32_t overheal, uint32_t absorbed, bool crit, bool periodic, uint32_t timeOffset) {
     if (!amount && !overheal && !absorbed) {
         return;
     }
@@ -1826,9 +1863,56 @@ void UnitCombatLogHeal(const WOWGUID& casterGuid, const WOWGUID& targetGuid, int
     }
 }
 
+void UnitCombatLogHealWide(const WOWGUID& casterGuid, const WOWGUID& targetGuid, int32_t spellId, uint64_t amount, uint64_t overheal, uint64_t absorbed, bool crit, bool periodic, uint32_t timeOffset) {
+    if (!amount && !overheal && !absorbed) {
+        return;
+    }
+
+    CGUnit_C* target = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(targetGuid, TYPE_UNIT, __FILE__, __LINE__));
+
+    if (target) {
+        target->ModifyPredictedHealth(ClampNativeUIAmount(amount));
+    }
+
+    SpellRec spell;
+
+    if (g_spellDB.GetRecord(spellId, &spell) && !(spell.m_attributes & 0x180) && *spell.m_name) {
+        uint32_t narrowAmount = ClampNativeUIAmount(amount);
+        uint32_t narrowOverheal = ClampNativeUIAmount(overheal);
+        uint32_t narrowAbsorbed = ClampNativeUIAmount(absorbed);
+        CombatLogEntry* entry = GetCombatLogEntry(casterGuid, targetGuid, periodic ? 35 : 10, &spell);
+        entry->m_infoFlags |= 0x20;
+        entry->m_info.m_values[1] = narrowOverheal;
+        entry->m_info.m_unsignedValues[0] = narrowAmount;
+        entry->m_info.m_unsignedValues[2] = narrowAbsorbed;
+        if (amount > kCombatLogWideThreshold) entry->SetWideValue(0, std::to_string(amount).c_str());
+        if (overheal > kCombatLogWideThreshold) entry->SetWideValue(1, std::to_string(overheal).c_str());
+        if (absorbed > kCombatLogWideThreshold) entry->SetWideValue(2, std::to_string(absorbed).c_str());
+        reinterpret_cast<uint8_t&>(entry->m_info.m_values[3]) = crit;
+        QueueCombatLogEntry(entry, timeOffset);
+
+        // The server's native combat-text packet is sent only for the actual
+        // heal amount. Preserve the stock text path when only overheal or
+        // absorb is wide, while avoiding a duplicate for a wide actual heal.
+        if (amount <= kCombatLogWideThreshold && amount) {
+            uint32_t displayAmount = static_cast<uint32_t>(amount);
+            if (s_combatTextActiveUnit == targetGuid) {
+                if (periodic) {
+                    FrameScript_SignalEvent(SCRIPT_EVENT_COMBAT_TEXT_UPDATE, "%s%s%u", s_combatTextTypes[27],
+                        GetObjectNameFromGuid(casterGuid), displayAmount);
+                } else {
+                    SendToCombatText(crit ? 37 : 38, GetObjectNameFromGuid(casterGuid), displayAmount);
+                }
+            } else if (target) {
+                target->AddWorldHealingText(casterGuid, displayAmount, &spell, crit, 0);
+            }
+        }
+    }
+}
+
 // VERIFY: 9de2c0e0 manual
 // OFFSET: 0x00752040
-void UnitCombatLogEnergize(const WOWGUID& casterGuid, const WOWGUID& targetGuid, int32_t spellId, int32_t powerType, int32_t amount, bool periodic, uint32_t timeOffset) {
+void UnitCombatLogEnergize(const WOWGUID& casterGuid, const WOWGUID& targetGuid, int32_t spellId, uint32_t powerType, uint32_t amount, bool periodic, uint32_t timeOffset) {
     if (!amount) {
         return;
     }
@@ -1935,12 +2019,16 @@ int32_t CombatLog::HandleSpellHealLog(CDataStore* msg, int32_t timeOffset) {
     *msg >> caster;
     uint32_t spellId = 0;
     msg->Get(spellId);
-    uint32_t amount = 0;
-    msg->Get(amount);
-    uint32_t overheal = 0;
-    msg->Get(overheal);
-    uint32_t absorbed = 0;
-    msg->Get(absorbed);
+    uint64_t rawAmount = 0;
+    uint64_t rawOverheal = 0;
+    uint64_t rawAbsorbed = 0;
+    msg->Get(rawAmount);
+    msg->Get(rawOverheal);
+    msg->Get(rawAbsorbed);
+    uint32_t amount = ClampNativeUIAmount(rawAmount);
+    uint32_t overheal = ClampNativeUIAmount(rawOverheal);
+    uint32_t absorbed = ClampNativeUIAmount(rawAbsorbed);
+    bool wideAmount = rawAmount > kCombatLogWideThreshold;
     uint8_t critByte = 0;
     msg->Get(critByte);
     bool crit = critByte != 0;
@@ -1956,16 +2044,23 @@ int32_t CombatLog::HandleSpellHealLog(CDataStore* msg, int32_t timeOffset) {
     if (!(spell.m_attributes & 0x100)) {
         CGUnit_C* unit = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(target, TYPE_UNIT, __FILE__, __LINE__));
 
-        if (unit && !amount && absorbed) {
+        if (unit && !wideAmount && !amount && absorbed) {
             WOWGUID source = caster;
             unit->AddWorldText(source, MISS_ABSORBED, &spell, true);
         }
 
         WOWGUID dest = target;
-        CGGameUI::ShowHealingFeedback(dest, amount, crit);
+        if (!wideAmount) {
+            CGGameUI::ShowHealingFeedback(dest, amount, crit);
+        }
     }
 
-    UnitCombatLogHeal(caster, target, spellId, amount, overheal, absorbed, crit, (spell.m_attributesExC & 0x2000000) != 0, timeOffset);
+    bool periodic = (spell.m_attributesExC & 0x2000000) != 0;
+    if (rawAmount > kCombatLogWideThreshold || rawOverheal > kCombatLogWideThreshold || rawAbsorbed > kCombatLogWideThreshold) {
+        UnitCombatLogHealWide(caster, target, spellId, rawAmount, rawOverheal, rawAbsorbed, crit, periodic, timeOffset);
+    } else {
+        UnitCombatLogHeal(caster, target, spellId, amount, overheal, absorbed, crit, periodic, timeOffset);
+    }
     return 1;
 }
 
@@ -1998,12 +2093,12 @@ int32_t CombatLog::HandleSpellLogEnergizeLog(CDataStore* msg, int32_t timeOffset
 
 // VERIFY: 4b332cb3 manual
 // OFFSET: 0x00750860
-void SendHealEvent(int32_t event, const WOWGUID& source, const WOWGUID& dest, const SpellRec* spell, int32_t amount, int32_t overheal, int32_t absorbed, bool crit, uint32_t timeOffset) {
+void SendHealEvent(int32_t event, const WOWGUID& source, const WOWGUID& dest, const SpellRec* spell, uint32_t amount, uint32_t overheal, uint32_t absorbed, bool crit, uint32_t timeOffset) {
     CombatLogEntry* entry = GetCombatLogEntry(source, dest, event, spell);
     entry->m_infoFlags |= 0x20;
     entry->m_info.m_values[1] = overheal;
-    entry->m_info.m_values[0] = amount;
-    entry->m_info.m_values[2] = absorbed;
+    entry->m_info.m_unsignedValues[0] = amount;
+    entry->m_info.m_unsignedValues[2] = absorbed;
     reinterpret_cast<uint8_t&>(entry->m_info.m_values[3]) = crit;
     QueueCombatLogEntry(entry, timeOffset);
 
@@ -2022,12 +2117,12 @@ void SendHealEvent(int32_t event, const WOWGUID& source, const WOWGUID& dest, co
     if (s_combatTextActiveUnit == dest) {
         if (absorbed) {
             if (event == 35) {
-                FrameScript_SignalEvent(SCRIPT_EVENT_COMBAT_TEXT_UPDATE, "%s%s%d%d", s_combatTextTypes[44], GetObjectNameFromGuid(source), amount, absorbed);
+                FrameScript_SignalEvent(SCRIPT_EVENT_COMBAT_TEXT_UPDATE, "%s%s%u%u", s_combatTextTypes[44], GetObjectNameFromGuid(source), amount, absorbed);
             } else {
                 SendToCombatText(crit ? 45 : 46, GetObjectNameFromGuid(source), amount, absorbed);
             }
         } else if (event == 35) {
-            FrameScript_SignalEvent(SCRIPT_EVENT_COMBAT_TEXT_UPDATE, "%s%s%d", s_combatTextTypes[27], GetObjectNameFromGuid(source), amount);
+            FrameScript_SignalEvent(SCRIPT_EVENT_COMBAT_TEXT_UPDATE, "%s%s%u", s_combatTextTypes[27], GetObjectNameFromGuid(source), amount);
         } else {
             SendToCombatText(crit ? 37 : 38, GetObjectNameFromGuid(source), amount);
         }
@@ -2042,16 +2137,16 @@ void SendHealEvent(int32_t event, const WOWGUID& source, const WOWGUID& dest, co
 
 // VERIFY: f15c546c manual
 // OFFSET: 0x00750A90
-void SendEnergizeEvent(int32_t event, const WOWGUID& source, const WOWGUID& dest, const SpellRec* spell, int32_t powerType, int32_t amount, uint32_t timeOffset) {
-    int32_t value = amount / Spell_C_GetPowerDisplayMod(static_cast<POWER_TYPE>(powerType));
+void SendEnergizeEvent(int32_t event, const WOWGUID& source, const WOWGUID& dest, const SpellRec* spell, uint32_t powerType, uint32_t amount, uint32_t timeOffset) {
+    uint32_t value = amount / Spell_C_GetPowerDisplayMod(static_cast<POWER_TYPE>(powerType));
     CombatLogEntry* entry = GetCombatLogEntry(source, dest, event, spell);
     entry->m_infoFlags |= 0x40;
-    entry->m_info.m_values[0] = value;
+    entry->m_info.m_unsignedValues[0] = value;
     entry->m_info.m_values[1] = powerType;
     QueueCombatLogEntry(entry, timeOffset);
 
     if (s_combatTextActiveUnit == dest) {
-        FrameScript_SignalEvent(SCRIPT_EVENT_COMBAT_TEXT_UPDATE, "%s%d%s", s_combatTextTypes[(event == 36) + 28], value, GetPowerString(static_cast<POWER_TYPE>(powerType)));
+        FrameScript_SignalEvent(SCRIPT_EVENT_COMBAT_TEXT_UPDATE, "%s%u%s", s_combatTextTypes[(event == 36) + 28], value, GetPowerString(static_cast<POWER_TYPE>(powerType)));
     }
 }
 
@@ -2092,7 +2187,7 @@ void UnitCombatLogPowerDrain(const WOWGUID& casterGuid, const WOWGUID& targetGui
     CGUnit_C* target = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(targetGuid, TYPE_UNIT, __FILE__, __LINE__));
 
     if (target) {
-        target->ModifyPredictedPower(static_cast<POWER_TYPE>(powerType), -static_cast<int32_t>(amount));
+        target->ModifyPredictedPower(static_cast<POWER_TYPE>(powerType), -static_cast<int64_t>(amount));
     }
 
     SpellRec spell;
@@ -2370,23 +2465,23 @@ void UnitCombatLogAuraRefreshed(CGUnit_C* unit, const AuraData* aura, int32_t sp
 
 // VERIFY: 9d679be0 manual
 // OFFSET: 0x00750660
-void SendDamageEvent(int32_t event, const WOWGUID& source, const WOWGUID& dest, const SpellRec* spell, int32_t damage, int32_t overkill, uint32_t school, int32_t resisted, int32_t blocked, int32_t absorbed, bool crit, bool a11, bool a12, uint32_t timeOffset) {
+void SendDamageEvent(int32_t event, const WOWGUID& source, const WOWGUID& dest, const SpellRec* spell, uint32_t damage, uint32_t overkill, uint32_t school, uint32_t resisted, uint32_t blocked, uint32_t absorbed, bool crit, bool a11, bool a12, uint32_t timeOffset) {
     if (event != 1) {
         CGUnit_C* unit = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(dest, TYPE_UNIT, __FILE__, __LINE__));
 
         if (unit) {
-            unit->ModifyPredictedHealth(-damage);
+            unit->ModifyPredictedHealth(-static_cast<int64_t>(damage));
         }
     }
 
     CombatLogEntry* entry = GetCombatLogEntry(source, dest, event, spell);
     entry->m_infoFlags |= 0x10;
-    entry->m_info.m_values[3] = school;
-    entry->m_info.m_values[4] = absorbed;
-    entry->m_info.m_values[1] = damage;
-    entry->m_info.m_values[5] = resisted;
-    entry->m_info.m_values[2] = overkill;
-    entry->m_info.m_values[6] = blocked;
+    entry->m_info.m_unsignedValues[3] = school;
+    entry->m_info.m_unsignedValues[4] = absorbed;
+    entry->m_info.m_unsignedValues[1] = damage;
+    entry->m_info.m_unsignedValues[5] = resisted;
+    entry->m_info.m_unsignedValues[2] = overkill;
+    entry->m_info.m_unsignedValues[6] = blocked;
     entry->m_infoBits = (entry->m_infoBits & ~0x7) | (crit & 1) | (((a11 & 1) | ((a12 & 1) << 1)) << 1);
     QueueCombatLogEntry(entry, timeOffset);
 
@@ -2395,7 +2490,7 @@ void SendDamageEvent(int32_t event, const WOWGUID& source, const WOWGUID& dest, 
     }
 
     if (resisted > 0) {
-        FrameScript_SignalEvent(SCRIPT_EVENT_COMBAT_TEXT_UPDATE, "%s%d%d", s_combatTextTypes[event == 9 ? 22 : 10], damage, resisted);
+        FrameScript_SignalEvent(SCRIPT_EVENT_COMBAT_TEXT_UPDATE, "%s%u%u", s_combatTextTypes[event == 9 ? 22 : 10], damage, resisted);
     } else if (blocked) {
         SendToCombatText(event == 9 ? 23 : 11, damage, blocked);
     } else if (absorbed) {
@@ -2409,9 +2504,77 @@ void SendDamageEvent(int32_t event, const WOWGUID& source, const WOWGUID& dest, 
     }
 }
 
+static void SendDamageEventWide(int32_t event, const WOWGUID& source, const WOWGUID& dest, const SpellRec* spell,
+    uint64_t damage, uint64_t overkill, uint32_t school, uint64_t resisted, uint64_t blocked, uint64_t absorbed,
+    bool crit, bool a11, bool a12, uint32_t timeOffset) {
+    uint32_t narrowDamage = ClampNativeUIAmount(damage);
+
+    if (event != 1) {
+        CGUnit_C* unit = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(dest, TYPE_UNIT, __FILE__, __LINE__));
+
+        if (unit) {
+            unit->ModifyPredictedHealth(-static_cast<int64_t>(narrowDamage));
+        }
+    }
+
+    CombatLogEntry* entry = GetCombatLogEntry(source, dest, event, spell);
+    entry->m_infoFlags |= 0x10;
+    entry->m_info.m_unsignedValues[3] = school;
+    entry->m_info.m_unsignedValues[4] = ClampNativeUIAmount(absorbed);
+    entry->m_info.m_unsignedValues[1] = narrowDamage;
+    entry->m_info.m_unsignedValues[5] = ClampNativeUIAmount(resisted);
+    entry->m_info.m_unsignedValues[2] = ClampNativeUIAmount(overkill);
+    entry->m_info.m_unsignedValues[6] = ClampNativeUIAmount(blocked);
+    if (damage > kCombatLogWideThreshold) entry->SetWideValue(1, std::to_string(damage).c_str());
+    if (overkill > kCombatLogWideThreshold) entry->SetWideValue(2, std::to_string(overkill).c_str());
+    if (resisted > kCombatLogWideThreshold) entry->SetWideValue(5, std::to_string(resisted).c_str());
+    if (blocked > kCombatLogWideThreshold) entry->SetWideValue(6, std::to_string(blocked).c_str());
+    if (absorbed > kCombatLogWideThreshold) entry->SetWideValue(4, std::to_string(absorbed).c_str());
+    entry->m_infoBits = (entry->m_infoBits & ~0x7) | (crit & 1) | (((a11 & 1) | ((a12 & 1) << 1)) << 1);
+    QueueCombatLogEntry(entry, timeOffset);
+
+    if (s_combatTextActiveUnit != dest || damage > kCombatLogWideThreshold) {
+        // Values above INT32_MAX are rendered by SMSG_NATIVE_UI_COMBAT_TEXT.
+        // Do not also send the legacy COMBAT_TEXT_UPDATE event, or the same
+        // hit appears twice. If only a secondary value is wide, retain the
+        // ordinary damage text below and omit the unrepresentable suffix.
+        return;
+    }
+
+    if (resisted > 0) {
+        if (resisted > kCombatLogWideThreshold) {
+            SendToCombatText(event == 9 ? 22 : 10, narrowDamage);
+        } else {
+            SendToCombatText(event == 9 ? 22 : 10, narrowDamage, static_cast<uint32_t>(resisted));
+        }
+    } else if (blocked) {
+        if (blocked > kCombatLogWideThreshold) {
+            SendToCombatText(event == 9 ? 23 : 11, narrowDamage);
+        } else {
+            SendToCombatText(event == 9 ? 23 : 11, narrowDamage, static_cast<uint32_t>(blocked));
+        }
+    } else if (absorbed) {
+        if (absorbed > kCombatLogWideThreshold) {
+            SendToCombatText(event == 9 ? 24 : 12, narrowDamage);
+        } else {
+            SendToCombatText(event == 9 ? 24 : 12, narrowDamage, static_cast<uint32_t>(absorbed));
+        }
+    } else if (crit) {
+        SendToCombatText(event == 9 ? 13 : 1, narrowDamage);
+    } else if (event == 40) {
+        SendToCombatText(39, narrowDamage);
+    } else {
+        SendToCombatText(event == 9 ? 14 : 2, narrowDamage);
+    }
+}
+
 // VERIFY: d14d7c4f manual
 // OFFSET: 0x00751C40
-void UnitCombatLogSpellDamage(const WOWGUID& source, const WOWGUID& dest, int32_t spellId, int32_t damage, int32_t overkill, uint32_t school, int32_t absorbed, int32_t resisted, int32_t blocked, uint32_t hitInfo, bool periodic, uint32_t timeOffset) {
+void UnitCombatLogSpellDamage(const WOWGUID& source, const WOWGUID& dest, int32_t spellId, uint32_t damage, uint32_t overkill, uint32_t school, uint32_t absorbed, uint32_t resisted, uint32_t blocked, uint32_t hitInfo, bool periodic, uint32_t timeOffset) {
+    UnitCombatLogSpellDamageWide(source, dest, spellId, damage, overkill, school, absorbed, resisted, blocked, hitInfo, periodic, timeOffset);
+}
+
+void UnitCombatLogSpellDamageWide(const WOWGUID& source, const WOWGUID& dest, int32_t spellId, uint64_t damage, uint64_t overkill, uint32_t school, uint64_t absorbed, uint64_t resisted, uint64_t blocked, uint32_t hitInfo, bool periodic, uint32_t timeOffset) {
     SpellRec spell;
 
     if (!g_spellDB.GetRecord(spellId, &spell) || (spell.m_attributes & 0x180) || !*spell.m_name) {
@@ -2426,7 +2589,7 @@ void UnitCombatLogSpellDamage(const WOWGUID& source, const WOWGUID& dest, int32_
         }
 
         int32_t event = periodic ? 34 : ((spell.m_attributesExC & 0x8000) ? 3 : 9);
-        SendDamageEvent(event, source, dest, &spell, damage, overkill, school, resisted, blocked, absorbed, (hitInfo >> 1) & 1, false, false, timeOffset);
+        SendDamageEventWide(event, source, dest, &spell, damage, overkill, school, resisted, blocked, absorbed, (hitInfo >> 1) & 1, false, false, timeOffset);
         return;
     }
 
@@ -2436,7 +2599,8 @@ void UnitCombatLogSpellDamage(const WOWGUID& source, const WOWGUID& dest, int32_
         CombatLogEntry* entry = GetCombatLogEntry(source, dest, event, &spell);
         entry->m_infoFlags |= 0x2004;
         entry->m_info.m_values[0] = 10;
-        entry->m_info.m_values[4] = absorbed;
+        entry->m_info.m_unsignedValues[4] = ClampNativeUIAmount(absorbed);
+        if (absorbed > kCombatLogWideThreshold) entry->SetWideValue(4, std::to_string(absorbed).c_str());
 
         if (s_combatTextActiveUnit == dest) {
             SendToCombatText(event == 8 ? 24 : 12);
@@ -2447,7 +2611,8 @@ void UnitCombatLogSpellDamage(const WOWGUID& source, const WOWGUID& dest, int32_
         CombatLogEntry* entry = GetCombatLogEntry(source, dest, event, &spell);
         entry->m_infoFlags |= 0x8004;
         entry->m_info.m_values[0] = 5;
-        entry->m_info.m_values[6] = blocked;
+        entry->m_info.m_unsignedValues[6] = ClampNativeUIAmount(blocked);
+        if (blocked > kCombatLogWideThreshold) entry->SetWideValue(6, std::to_string(blocked).c_str());
 
         if (s_combatTextActiveUnit == dest) {
             SendToCombatText(event == 8 ? 23 : 11);
@@ -2458,7 +2623,8 @@ void UnitCombatLogSpellDamage(const WOWGUID& source, const WOWGUID& dest, int32_
         CombatLogEntry* entry = GetCombatLogEntry(source, dest, event, &spell);
         entry->m_infoFlags |= 0x4004;
         entry->m_info.m_values[0] = 2;
-        entry->m_info.m_values[5] = resisted;
+        entry->m_info.m_unsignedValues[5] = ClampNativeUIAmount(resisted);
+        if (resisted > kCombatLogWideThreshold) entry->SetWideValue(5, std::to_string(resisted).c_str());
 
         if (s_combatTextActiveUnit == dest) {
             SendToCombatText(event == 8 ? 22 : 10);
@@ -2470,17 +2636,18 @@ void UnitCombatLogSpellDamage(const WOWGUID& source, const WOWGUID& dest, int32_
 
 // VERIFY: 9129ea05 manual
 // OFFSET: 0x00752DE0
-void UnitCombatLogSplitDamage(const WOWGUID& source, const WOWGUID& dest, int32_t spellId, int32_t damage, int32_t overkill, uint32_t school, int32_t absorbed, int32_t resisted, int32_t blocked, uint32_t hitInfo, uint32_t timeOffset) {
+void UnitCombatLogSplitDamage(const WOWGUID& source, const WOWGUID& dest, int32_t spellId, uint64_t damage, uint64_t overkill, uint32_t school, uint64_t absorbed, uint64_t resisted, uint64_t blocked, uint32_t hitInfo, uint32_t timeOffset) {
     SpellRec spell;
 
     if (!g_spellDB.GetRecord(spellId, &spell) || (spell.m_attributes & 0x180) || !*spell.m_name) {
         return;
     }
 
-    SendDamageEvent(42, source, dest, &spell, damage, overkill, school, resisted, blocked, absorbed, (hitInfo >> 1) & 1, false, false, timeOffset);
+    SendDamageEventWide(42, source, dest, &spell, damage, overkill, school, resisted, blocked, absorbed,
+        (hitInfo >> 1) & 1, false, false, timeOffset);
 
-    if (s_combatTextActiveUnit == dest) {
-        FrameScript_SignalEvent(SCRIPT_EVENT_COMBAT_TEXT_UPDATE, "%s%d", s_combatTextTypes[42], damage);
+    if (s_combatTextActiveUnit == dest && damage <= kCombatLogWideThreshold) {
+        SendToCombatText(42, static_cast<uint32_t>(damage));
     }
 }
 
@@ -2524,23 +2691,29 @@ int32_t CombatLog::HandleSpellNonMeleeDamageLog(CDataStore* msg, int32_t timeOff
     *msg >> caster;
     uint32_t spellId = 0;
     msg->Get(spellId);
-    uint32_t damage = 0;
-    msg->Get(damage);
-    uint32_t overkill = 0;
-    msg->Get(overkill);
+    uint64_t rawDamage = 0;
+    uint64_t rawOverkill = 0;
+    msg->Get(rawDamage);
+    msg->Get(rawOverkill);
+    uint32_t damage = ClampNativeUIAmount(rawDamage);
+    uint32_t overkill = ClampNativeUIAmount(rawOverkill);
+    bool wideDamage = rawDamage > kCombatLogWideThreshold;
     uint8_t schoolByte = 0;
     msg->Get(schoolByte);
     uint32_t school = schoolByte;
-    uint32_t absorbed = 0;
-    msg->Get(absorbed);
-    uint32_t resisted = 0;
-    msg->Get(resisted);
+    uint64_t rawAbsorbed = 0;
+    uint64_t rawResisted = 0;
+    msg->Get(rawAbsorbed);
+    msg->Get(rawResisted);
+    uint32_t absorbed = ClampNativeUIAmount(rawAbsorbed);
+    uint32_t resisted = ClampNativeUIAmount(rawResisted);
     uint8_t periodic = 0;
     msg->Get(periodic);
     uint8_t unused = 0;
     msg->Get(unused);
-    uint32_t blocked = 0;
-    msg->Get(blocked);
+    uint64_t rawBlocked = 0;
+    msg->Get(rawBlocked);
+    uint32_t blocked = ClampNativeUIAmount(rawBlocked);
     uint32_t hitInfo = 0;
     msg->Get(hitInfo);
     uint8_t debug = 0;
@@ -2565,9 +2738,10 @@ int32_t CombatLog::HandleSpellNonMeleeDamageLog(CDataStore* msg, int32_t timeOff
     int32_t found = g_spellDB.GetRecord(spellId, &spell);
 
     if (hitInfo & 0x8) {
-        UnitCombatLogSplitDamage(caster, target, spellId, damage, overkill, school, absorbed, resisted, blocked, hitInfo, timeOffset);
+        UnitCombatLogSplitDamage(caster, target, spellId, rawDamage, rawOverkill, school, rawAbsorbed, rawResisted,
+            rawBlocked, hitInfo, timeOffset);
 
-        if (found && !(spell.m_attributes & 0x100)) {
+        if (found && !(spell.m_attributes & 0x100) && !wideDamage) {
             CGGameUI::ShowCombatFeedback(target, damage, school, flags);
         }
 
@@ -2575,13 +2749,20 @@ int32_t CombatLog::HandleSpellNonMeleeDamageLog(CDataStore* msg, int32_t timeOff
     }
 
     WOWGUID source = (hitInfo & 0x10) ? target : caster;
-    UnitCombatLogSpellDamage(source, target, spellId, damage, overkill, school, absorbed, resisted, blocked, hitInfo, periodic, timeOffset);
+    if (rawDamage > kCombatLogWideThreshold || rawOverkill > kCombatLogWideThreshold || rawAbsorbed > kCombatLogWideThreshold ||
+        rawResisted > kCombatLogWideThreshold || rawBlocked > kCombatLogWideThreshold) {
+        UnitCombatLogSpellDamageWide(source, target, spellId, rawDamage, rawOverkill, school, rawAbsorbed, rawResisted, rawBlocked, hitInfo, periodic != 0, timeOffset);
+    } else {
+        UnitCombatLogSpellDamage(source, target, spellId, damage, overkill, school, absorbed, resisted, blocked, hitInfo, periodic != 0, timeOffset);
+    }
 
     if (found && !(spell.m_attributes & 0x100)) {
-        CGGameUI::ShowCombatFeedback(target, damage, school, flags);
+        if (!wideDamage) {
+            CGGameUI::ShowCombatFeedback(target, damage, school, flags);
+        }
         CGUnit_C* unit = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(target, TYPE_UNIT, __FILE__, __LINE__));
 
-        if (unit) {
+        if (unit && !wideDamage) {
             if (damage) {
                 unit->AddWorldDamageText(caster, damage, &spell, crit, false, false);
             } else if (absorbed) {
@@ -2649,27 +2830,34 @@ int32_t CombatLog::HandlePeriodicAuraLog(CDataStore* msg, int32_t timeOffset) {
         switch (auraType) {
             case 3:
             case 89: {
-                uint32_t damage = 0;
-                msg->Get(damage);
-                uint32_t overkill = 0;
-                msg->Get(overkill);
+                uint64_t rawDamage = 0;
+                uint64_t rawOverkill = 0;
+                msg->Get(rawDamage);
+                msg->Get(rawOverkill);
+                uint32_t damage = ClampNativeUIAmount(rawDamage);
+                uint32_t overkill = ClampNativeUIAmount(rawOverkill);
+                bool wideDamage = rawDamage > kCombatLogWideThreshold;
                 uint32_t school = 0;
                 msg->Get(school);
-                uint32_t absorbed = 0;
-                msg->Get(absorbed);
-                uint32_t resisted = 0;
-                msg->Get(resisted);
+                uint64_t rawAbsorbed = 0;
+                uint64_t rawResisted = 0;
+                msg->Get(rawAbsorbed);
+                msg->Get(rawResisted);
+                uint32_t absorbed = ClampNativeUIAmount(rawAbsorbed);
+                uint32_t resisted = ClampNativeUIAmount(rawResisted);
                 uint8_t crit = 0;
                 msg->Get(crit);
                 uint8_t hitInfo = 0;
 
                 if (!(spell.m_attributes & 0x100)) {
-                    if (damage) {
-                        unit->AddWorldDamageText(caster, damage, &spell, crit != 0, true, false);
-                    } else if (absorbed) {
-                        unit->AddWorldText(caster, MISS_ABSORBED, &spell, true);
-                    } else if (resisted) {
-                        unit->AddWorldText(caster, MISS_RESIST, &spell, true);
+                    if (!wideDamage) {
+                        if (damage) {
+                            unit->AddWorldDamageText(caster, damage, &spell, crit != 0, true, false);
+                        } else if (absorbed) {
+                            unit->AddWorldText(caster, MISS_ABSORBED, &spell, true);
+                        } else if (resisted) {
+                            unit->AddWorldText(caster, MISS_RESIST, &spell, true);
+                        }
                     }
 
                     uint32_t flags = 0;
@@ -2687,33 +2875,49 @@ int32_t CombatLog::HandlePeriodicAuraLog(CDataStore* msg, int32_t timeOffset) {
                         hitInfo = 2;
                     }
 
-                    CGGameUI::ShowCombatFeedback(target, damage, school, flags);
+                    if (!wideDamage) {
+                        CGGameUI::ShowCombatFeedback(target, damage, school, flags);
+                    }
                 }
 
-                UnitCombatLogSpellDamage(caster, target, spellId, damage, overkill, school, absorbed, resisted, 0, hitInfo, true, timeOffset);
+                if (rawDamage > kCombatLogWideThreshold || rawOverkill > kCombatLogWideThreshold || rawAbsorbed > kCombatLogWideThreshold || rawResisted > kCombatLogWideThreshold) {
+                    UnitCombatLogSpellDamageWide(caster, target, spellId, rawDamage, rawOverkill, school, rawAbsorbed, rawResisted, 0, hitInfo, true, timeOffset);
+                } else {
+                    UnitCombatLogSpellDamage(caster, target, spellId, damage, overkill, school, absorbed, resisted, 0, hitInfo, true, timeOffset);
+                }
                 break;
             }
 
             case 8:
             case 20: {
-                uint32_t amount = 0;
-                msg->Get(amount);
-                uint32_t overheal = 0;
-                msg->Get(overheal);
-                uint32_t absorbed = 0;
-                msg->Get(absorbed);
+                uint64_t rawAmount = 0;
+                uint64_t rawOverheal = 0;
+                uint64_t rawAbsorbed = 0;
+                msg->Get(rawAmount);
+                msg->Get(rawOverheal);
+                msg->Get(rawAbsorbed);
+                uint32_t amount = ClampNativeUIAmount(rawAmount);
+                uint32_t overheal = ClampNativeUIAmount(rawOverheal);
+                uint32_t absorbed = ClampNativeUIAmount(rawAbsorbed);
+                bool wideAmount = rawAmount > kCombatLogWideThreshold;
                 uint8_t crit = 0;
                 msg->Get(crit);
 
                 if (!(spell.m_attributes & 0x100)) {
-                    if (!amount && absorbed) {
+                    if (!wideAmount && !amount && absorbed) {
                         unit->AddWorldText(caster, MISS_ABSORBED, &spell, true);
                     }
 
-                    CGGameUI::ShowHealingFeedback(target, amount, crit != 0);
+                    if (!wideAmount) {
+                        CGGameUI::ShowHealingFeedback(target, amount, crit != 0);
+                    }
                 }
 
-                UnitCombatLogHeal(caster, target, spellId, amount, overheal, absorbed, crit != 0, true, timeOffset);
+                if (rawAmount > kCombatLogWideThreshold || rawOverheal > kCombatLogWideThreshold || rawAbsorbed > kCombatLogWideThreshold) {
+                    UnitCombatLogHealWide(caster, target, spellId, rawAmount, rawOverheal, rawAbsorbed, crit != 0, true, timeOffset);
+                } else {
+                    UnitCombatLogHeal(caster, target, spellId, amount, overheal, absorbed, crit != 0, true, timeOffset);
+                }
                 break;
             }
 
@@ -2721,8 +2925,9 @@ int32_t CombatLog::HandlePeriodicAuraLog(CDataStore* msg, int32_t timeOffset) {
             case 24: {
                 uint32_t powerType = 0;
                 msg->Get(powerType);
-                uint32_t amount = 0;
-                msg->Get(amount);
+                uint64_t rawAmount = 0;
+                msg->Get(rawAmount);
+                uint32_t amount = ClampNativeUIAmount(rawAmount);
 
                 if (!(spell.m_attributes & 0x100)) {
                     CGGameUI::ShowEnergizeFeedback(target, powerType, amount);
@@ -2735,8 +2940,9 @@ int32_t CombatLog::HandlePeriodicAuraLog(CDataStore* msg, int32_t timeOffset) {
             case 64: {
                 uint32_t powerType = 0;
                 msg->Get(powerType);
-                uint32_t amount = 0;
-                msg->Get(amount);
+                uint64_t rawAmount = 0;
+                msg->Get(rawAmount);
+                uint32_t amount = ClampNativeUIAmount(rawAmount);
                 float multiplier = 0.0f;
                 msg->Get(multiplier);
                 UnitCombatLogPowerDrain(caster, target, spellId, powerType, amount, multiplier, true, timeOffset);
@@ -2972,6 +3178,28 @@ static inline void PackInt(char*& cursor, uint32_t& remaining, int32_t value) {
     }
 }
 
+static inline void PackUInt(char*& cursor, uint32_t& remaining, uint32_t value) {
+    if (remaining > 1) {
+        *cursor++ = ',';
+        remaining--;
+    }
+
+    uint32_t length = SStrPrintf(cursor, remaining, "%u", value);
+
+    if (length && length < remaining) {
+        cursor += length;
+        remaining -= length;
+    }
+}
+
+static inline void PackCombatLogValue(char*& cursor, uint32_t& remaining, CombatLogEntry const* entry, uint32_t index) {
+    if (index < 7 && (entry->m_wideValueMask & static_cast<uint8_t>(1u << index))) {
+        PackString(cursor, remaining, entry->m_wideValues[index]);
+    } else {
+        PackUInt(cursor, remaining, entry->m_info.m_unsignedValues[index]);
+    }
+}
+
 // INLINED
 static inline void PackUnit(char*& cursor, uint32_t& remaining, const WOWGUID& guid, const char* name, const char* realm, uint32_t flags) {
     if (remaining > 1) {
@@ -3001,10 +3229,14 @@ static inline void PackUnit(char*& cursor, uint32_t& remaining, const WOWGUID& g
 // VERIFY: 18bf57c5 manual
 // OFFSET: 0x0074E880
 void CombatLogEntry::PackEvent(char* buffer, uint32_t size) {
+    if (!buffer || !size) {
+        return;
+    }
+
     char* cursor = buffer;
-    uint32_t remaining = size;
+    // The pack helpers may consume all remaining bytes; reserve the terminator.
     size_t length = SStrCopy(buffer, s_combatLogEventNames[this->m_event], size);
-    remaining += static_cast<uint32_t>(length);
+    uint32_t remaining = size - 1 - static_cast<uint32_t>(length);
     cursor += length;
     PackUnit(cursor, remaining, this->m_sourceGuid, this->m_sourceName, this->m_sourceRealm, this->m_sourceFlags);
     PackUnit(cursor, remaining, this->m_destGuid, this->m_destName, this->m_destRealm, this->m_destFlags);
@@ -3036,7 +3268,7 @@ void CombatLogEntry::PackEvent(char* buffer, uint32_t size) {
     uint32_t flags = this->m_infoFlags;
 
     if (flags & 0x1) {
-        PackInt(cursor, remaining, this->m_info.m_values[0]);
+        PackCombatLogValue(cursor, remaining, this, 0);
     }
 
     if (flags & 0x2) {
@@ -3052,12 +3284,12 @@ void CombatLogEntry::PackEvent(char* buffer, uint32_t size) {
     }
 
     if (flags & 0x10) {
-        PackInt(cursor, remaining, this->m_info.m_values[1]);
-        PackInt(cursor, remaining, this->m_info.m_values[2]);
-        PackInt(cursor, remaining, this->m_info.m_values[3]);
-        PackInt(cursor, remaining, this->m_info.m_values[5]);
-        PackInt(cursor, remaining, this->m_info.m_values[6]);
-        PackInt(cursor, remaining, this->m_info.m_values[4]);
+        PackCombatLogValue(cursor, remaining, this, 1);
+        PackCombatLogValue(cursor, remaining, this, 2);
+        PackUInt(cursor, remaining, this->m_info.m_unsignedValues[3]);
+        PackCombatLogValue(cursor, remaining, this, 5);
+        PackCombatLogValue(cursor, remaining, this, 6);
+        PackCombatLogValue(cursor, remaining, this, 4);
 
         if (this->m_infoBits & 0x1) {
             PackInt(cursor, remaining, 1);
@@ -3079,21 +3311,21 @@ void CombatLogEntry::PackEvent(char* buffer, uint32_t size) {
     }
 
     if (flags & 0x2000) {
-        PackInt(cursor, remaining, this->m_info.m_values[4]);
+        PackCombatLogValue(cursor, remaining, this, 4);
     }
 
     if (flags & 0x4000) {
-        PackInt(cursor, remaining, this->m_info.m_values[5]);
+        PackCombatLogValue(cursor, remaining, this, 5);
     }
 
     if (flags & 0x8000) {
-        PackInt(cursor, remaining, this->m_info.m_values[6]);
+        PackCombatLogValue(cursor, remaining, this, 6);
     }
 
     if (flags & 0x20) {
-        PackInt(cursor, remaining, this->m_info.m_values[0]);
-        PackInt(cursor, remaining, this->m_info.m_values[1]);
-        PackInt(cursor, remaining, this->m_info.m_values[2]);
+        PackCombatLogValue(cursor, remaining, this, 0);
+        PackCombatLogValue(cursor, remaining, this, 1);
+        PackCombatLogValue(cursor, remaining, this, 2);
 
         if (this->m_info.m_values[3]) {
             PackInt(cursor, remaining, 1);
@@ -3103,8 +3335,8 @@ void CombatLogEntry::PackEvent(char* buffer, uint32_t size) {
     }
 
     if (flags & 0x40) {
-        PackInt(cursor, remaining, this->m_info.m_values[0]);
-        PackInt(cursor, remaining, this->m_info.m_values[1]);
+        PackCombatLogValue(cursor, remaining, this, 0);
+        PackUInt(cursor, remaining, this->m_info.m_unsignedValues[1]);
     }
 
     if (flags & 0x80000000) {
@@ -3148,11 +3380,11 @@ void CombatLogEntry::PackEvent(char* buffer, uint32_t size) {
 
 // VERIFY: 8242155b manual
 // OFFSET: 0x00751150
-void UnitCombatLog(const WOWGUID& guid, uint32_t type, int32_t damage, int32_t absorbed, int32_t resisted) {
+void UnitCombatLog(const WOWGUID& guid, uint32_t type, uint32_t damage, uint32_t absorbed, uint32_t resisted) {
     CGUnit_C* unit = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(guid, TYPE_UNIT, __FILE__, __LINE__));
 
     if (unit) {
-        unit->ModifyPredictedHealth(-damage);
+        unit->ModifyPredictedHealth(-static_cast<int64_t>(damage));
         unit->TriggerDamageFeedback();
     }
 
@@ -3162,11 +3394,11 @@ void UnitCombatLog(const WOWGUID& guid, uint32_t type, int32_t damage, int32_t a
     entry->m_infoBits &= ~0x7;
     entry->m_infoFlags |= 0x10;
     entry->m_info.m_values[3] = 1 << s_environmentalDamageSchools[type];
-    entry->m_info.m_values[5] = resisted;
-    entry->m_info.m_values[1] = damage;
+    entry->m_info.m_unsignedValues[5] = resisted;
+    entry->m_info.m_unsignedValues[1] = damage;
     entry->m_info.m_values[2] = 0;
     entry->m_info.m_values[6] = 0;
-    entry->m_info.m_values[4] = absorbed;
+    entry->m_info.m_unsignedValues[4] = absorbed;
     QueueCombatLogEntry(entry, 0);
 
     if (s_combatTextActiveUnit != guid) {

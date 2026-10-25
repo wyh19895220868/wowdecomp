@@ -2928,20 +2928,20 @@ bool CGGameObject_C::IsTracked() const {
 
 // VERIFY: a1c0c530 auto
 // OFFSET: 0x0070F880
-void CGGameObject_C::AddWorldDamageText(int32_t amount) {
+void CGGameObject_C::AddWorldDamageText(uint32_t amount) {
     if (amount && g_combatDamageCVar->m_intValue && this->m_gameObject->m_typeID == 33) {
         char text[32];
-        SStrPrintf(text, sizeof(text), "%d", amount);
+        SStrPrintf(text, sizeof(text), "%u", amount);
         PlayerNameCreateText(this->m_nameDesc, WT_BUILDING_DAMAGE, text, reinterpret_cast<const CImVector*>(&s_buildingDamageColor), nullptr);
     }
 }
 
 // VERIFY: 879b3c82 auto
 // OFFSET: 0x0070F8E0
-void CGGameObject_C::AddWorldHealingText(int32_t amount, const SpellRec* spell) {
+void CGGameObject_C::AddWorldHealingText(uint32_t amount, const SpellRec* spell) {
     if (amount && g_combatHealingCVar->m_intValue && this->m_gameObject->m_typeID == 33) {
         char text[32];
-        SStrPrintf(text, sizeof(text), "+%d", amount);
+        SStrPrintf(text, sizeof(text), "+%u", amount);
         PlayerNameCreateText(this->m_nameDesc, WT_BUILDING_HEAL, text, nullptr, nullptr);
     }
 }

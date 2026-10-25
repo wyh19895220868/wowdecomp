@@ -802,9 +802,9 @@ uint64_t CGAchievementInfo::BuildOutputString(char* buffer, int32_t size, uint64
 
         if (criteriaFlags & 0x20) {
             if (colorblindMode && colorblindMode->m_intValue) {
-                GetCurrencyShortText(static_cast<int32_t>(result), buffer, size, " ");
+                GetCurrencyShortText(static_cast<uint32_t>(result), buffer, size, " ");
             } else {
-                GetCurrencyTextureString(static_cast<int32_t>(result), buffer, size, 0);
+                GetCurrencyTextureString(static_cast<uint32_t>(result), buffer, size, 0);
             }
         } else if (perDay != 0.0f) {
             SStrPrintf(buffer, size, "%0.2f", perDay);
@@ -867,9 +867,9 @@ uint64_t CGAchievementInfo::BuildOutputString(char* buffer, int32_t size, uint64
             SStrPrintf(buffer, size, "%02d/%02d/%d", date.m_month, date.m_day, static_cast<int16_t>(date.m_year));
         } else if (rec && (rec->m_flags & 0x20)) {
             if (colorblindMode && colorblindMode->m_intValue) {
-                GetCurrencyShortText(static_cast<int32_t>(result), buffer, size, " ");
+                GetCurrencyShortText(static_cast<uint32_t>(result), buffer, size, " ");
             } else {
-                GetCurrencyTextureString(static_cast<int32_t>(result), buffer, size, 0);
+                GetCurrencyTextureString(static_cast<uint32_t>(result), buffer, size, 0);
             }
         } else if (!(flags & 0x1)) {
             SStrPrintf(buffer, size, "%I64d", result);
@@ -891,9 +891,9 @@ uint64_t CGAchievementInfo::BuildOutputString(char* buffer, int32_t size, uint64
             }
         } else if (criteriaFlags & 0x20) {
             if (colorblindMode && colorblindMode->m_intValue) {
-                GetCurrencyShortText(static_cast<int32_t>(result), buffer, size, " ");
+                GetCurrencyShortText(static_cast<uint32_t>(result), buffer, size, " ");
             } else {
-                GetCurrencyTextureString(static_cast<int32_t>(result), buffer, size, 0);
+                GetCurrencyTextureString(static_cast<uint32_t>(result), buffer, size, 0);
             }
         } else {
             SStrPrintf(buffer, size, "%I64d", result);

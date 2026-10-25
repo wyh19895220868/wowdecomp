@@ -373,8 +373,8 @@ class CGGameObject_C : public CGObject_C, public CGGameObject {
     void CloseInteraction();
     void UseObject();
     CMapEntity* CreateWorldObject(uint64_t guid, int32_t a4, uint32_t doodadSetCount, const int16_t* doodadSets);
-    void AddWorldDamageText(int32_t amount);
-    void AddWorldHealingText(int32_t amount, const SpellRec* spell);
+    void AddWorldDamageText(uint32_t amount);
+    void AddWorldHealingText(uint32_t amount, const SpellRec* spell);
     const char* GetCloseText() const;
     void GetCursorFile(char* buffer, uint32_t size) const;
     float GetInteractDistanceSquared() const;

@@ -524,8 +524,14 @@ static bool LoadSimpleBackgroundTexture() {
 int32_t IsStillLoading() {
     CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPE_PLAYER, __FILE__, __LINE__));
 
-    if (!player || !player->GetTransportGUID()) {
+    if (!player) {
         return 1;
+    }
+
+    // On-foot players have no transport left to wait for.
+    if (!player->GetTransportGUID()) {
+        LoadingScreenDisable();
+        return 0;
     }
 
     CGGameObject_C* transport = static_cast<CGGameObject_C*>(ClntObjMgrObjectPtr(WOWGUID{ player->GetTransportGUID() }, TYPE_GAMEOBJECT, __FILE__, __LINE__));

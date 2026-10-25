@@ -20,6 +20,11 @@
 #include "WoW/Source/Ui/WorldFrame.h"
 #include "WoW/Source/WorldClient/FrameTime.h"
 #include "WoW/Source/WowSvcs/WowSvcsClient/ClientServices.h"
+#include "WoW/Source/NativeUIReader.h"
+
+static uint32_t ClampNativeUIAmount(uint64_t value) {
+    return value > 0xFFFFFFFFull ? 0xFFFFFFFFu : static_cast<uint32_t>(value);
+}
 
 // STATIC: 0x00CA1600
 static uint32_t s_nextVictimImpactTime;
@@ -54,7 +59,7 @@ int32_t CGUnit_C::GetUnitSize() const {
 
 // VERIFY: b8716225 manual
 // OFFSET: 0x00755270
-void CGUnit_C::HandleEnvironmentDamage(uint32_t type, int32_t damage, int32_t absorbed, int32_t resisted) {
+void CGUnit_C::HandleEnvironmentDamage(uint32_t type, uint32_t damage, uint32_t absorbed, uint32_t resisted) {
     if (damage || absorbed || resisted) {
         WOWGUID guid = this->m_obj->m_guid;
         UnitCombatLog(guid, type, damage, absorbed, resisted);
@@ -306,67 +311,126 @@ void CGUnit_C::ShakeCameraOnHit() {
     }
 }
 
-// VERIFY: 4da467b9 manual
+static bool ReadAttackRoundGuid(CDataStore& msg, WOWGUID& guid)
+{
+    uint8_t mask = 0;
+    if (!NativeUIRead(&msg, mask))
+        return false;
+
+    guid.m_guid = 0;
+    for (uint32_t bit = 0; bit < 8; ++bit)
+    {
+        if (!(mask & (1u << bit)))
+            continue;
+
+        uint8_t byte = 0;
+        if (!NativeUIRead(&msg, byte))
+            return false;
+        guid.m_guid |= static_cast<uint64_t>(byte) << (8 * bit);
+    }
+    return true;
+}
+
+template <typename Amount>
+static bool ReadAttackRoundAmount(CDataStore& msg, uint64_t& exact, uint32_t& projection)
+{
+    Amount amount = 0;
+    if (!NativeUIRead(&msg, amount))
+        return false;
+    exact = amount;
+    projection = ClampNativeUIAmount(exact);
+    return true;
+}
+
+template <typename Amount>
+static bool ReadAttackRoundInfo(CDataStore& msg, ATTACKROUNDINFO& info)
+{
+    if (!NativeUIRead(&msg, info.m_hitInfo)
+        || !ReadAttackRoundGuid(msg, info.m_attacker) || !ReadAttackRoundGuid(msg, info.m_target)
+        || !ReadAttackRoundAmount<Amount>(msg, info.m_damageWide, info.m_damage)
+        || !ReadAttackRoundAmount<Amount>(msg, info.m_overkillWide, info.m_overkill))
+        return false;
+
+    uint8_t count = 0;
+    if (!NativeUIRead(&msg, count) || count == 0 || count > 2)
+        return false;
+
+    for (uint8_t i = 0; i < count; ++i)
+    {
+        if (!NativeUIRead(&msg, info.m_schoolMask[i]) || !NativeUIRead(&msg, info.m_subDamage[i])
+            || !ReadAttackRoundAmount<Amount>(msg, info.m_subDamageIntWide[i], info.m_subDamageInt[i]))
+            return false;
+    }
+
+    if (info.m_hitInfo & 0x60)
+    {
+        for (uint8_t i = 0; i < count; ++i)
+        {
+            if (!ReadAttackRoundAmount<Amount>(msg, info.m_absorbedWide[i], info.m_absorbed[i]))
+                return false;
+        }
+    }
+
+    if (info.m_hitInfo & 0x180)
+    {
+        for (uint8_t i = 0; i < count; ++i)
+        {
+            if (!ReadAttackRoundAmount<Amount>(msg, info.m_resistedWide[i], info.m_resisted[i]))
+                return false;
+        }
+    }
+
+    uint8_t victimState = 0;
+    if (!NativeUIRead(&msg, victimState) || victimState >= 9
+        || !NativeUIRead(&msg, info.unk_0058) || !NativeUIRead(&msg, info.m_meleeSpellId))
+        return false;
+    info.m_victimState = static_cast<VICTIMSTATES>(victimState);
+
+    if ((info.m_hitInfo & 0x2000)
+        && !ReadAttackRoundAmount<Amount>(msg, info.m_blockedWide, info.m_blocked))
+        return false;
+    if ((info.m_hitInfo & 0x800000) && !NativeUIRead(&msg, info.m_rageGained))
+        return false;
+
+    if (info.m_hitInfo & 0x1)
+    {
+        if (!NativeUIRead(&msg, info.unk_0068))
+            return false;
+        for (uint32_t i = 0; i < 8; ++i)
+        {
+            if (!NativeUIRead(&msg, info.unk_006C[i]))
+                return false;
+        }
+        // The debug tail has one pair of floats, independent of the damage count.
+        if (!NativeUIRead(&msg, info.unk_0024[0]) || !NativeUIRead(&msg, info.unk_002C[0])
+            || !NativeUIRead(&msg, info.unk_008C[0]))
+            return false;
+    }
+
+    return msg.IsRead() != 0;
+}
+
 // OFFSET: 0x00755630
-void ATTACKROUNDINFO::Unpack(CDataStore& msg) {
-    msg.Get(this->m_hitInfo);
-    msg >> *reinterpret_cast<SmartGUID*>(&this->m_attacker);
-    msg >> *reinterpret_cast<SmartGUID*>(&this->m_target);
-    msg.Get(reinterpret_cast<uint32_t&>(this->m_damage));
-    msg.Get(reinterpret_cast<uint32_t&>(this->m_overkill));
-    uint8_t count;
-    msg.Get(count);
+bool ATTACKROUNDINFO::Unpack(CDataStore& msg)
+{
+    uint32_t start = msg.m_read;
+    ATTACKROUNDINFO legacy;
+    ATTACKROUNDINFO wide;
+    bool validLegacy = ReadAttackRoundInfo<uint32_t>(msg, legacy);
+    msg.m_read = start;
+    bool validWide = ReadAttackRoundInfo<uint64_t>(msg, wide);
+    msg.m_read = msg.m_size;
 
-    for (uint8_t i = 0; i < count; i++) {
-        msg.Get(this->m_schoolMask[i]);
-        msg.Get(this->m_subDamage[i]);
-        msg.Get(this->m_subDamageInt[i]);
-    }
+    // A complete packet must match exactly one layout. Never pass partially
+    // decoded or ambiguous state to combat feedback or combat-log consumers.
+    if (validLegacy == validWide)
+        return false;
 
-    if (this->m_hitInfo & 0x60) {
-        for (uint8_t i = 0; i < count; i++) {
-            msg.Get(this->m_absorbed[i]);
-        }
-    }
-
-    if (this->m_hitInfo & 0x180) {
-        for (uint8_t i = 0; i < count; i++) {
-            msg.Get(this->m_resisted[i]);
-        }
-    }
-
-    uint8_t victimState;
-    msg.Get(victimState);
-    this->m_victimState = static_cast<VICTIMSTATES>(victimState);
-    msg.Get(this->unk_0058);
-    msg.Get(this->m_meleeSpellId);
-
-    if (this->m_hitInfo & 0x2000) {
-        msg.Get(this->m_blocked);
-    }
-
-    if (this->m_hitInfo & 0x800000) {
-        msg.Get(this->m_rageGained);
-    }
-
-    if (this->m_hitInfo & 0x1) {
-        msg.Get(this->unk_0068);
-
-        for (uint32_t i = 0; i < 8; i++) {
-            msg.Get(this->unk_006C[i]);
-        }
-
-        for (uint32_t i = 0; i < 2; i++) {
-            msg.Get(this->unk_0024[i]);
-            msg.Get(this->unk_002C[i]);
-        }
-
-        msg.Get(this->unk_008C[0]);
-    }
-
-    if (ClntObjMgrObjectPtr(this->m_target, TYPE_UNIT, __FILE__, __LINE__) && !this->m_damage && this->m_blocked) {
+    *this = validLegacy ? legacy : wide;
+    if (ClntObjMgrObjectPtr(this->m_target, TYPE_UNIT, __FILE__, __LINE__)
+        && !this->m_damage && this->m_blocked)
         this->m_victimState = VS_BLOCK;
-    }
+    return true;
 }
 
 // VERIFY: 49638f19 manual
@@ -800,7 +864,8 @@ int32_t Packet_Group_29(void* param, NETMESSAGE msgId, uint32_t time, CDataStore
         }
         case SMSG_ATTACKER_STATE_UPDATE: {
             ATTACKROUNDINFO info;
-            info.Unpack(*msg);
+            if (!info.Unpack(*msg))
+                return 0;
             CGUnit_C* attacker = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(info.m_attacker, TYPE_UNIT, __FILE__, __LINE__));
 
             if (attacker) {
@@ -845,10 +910,10 @@ int32_t Packet_Group_29(void* param, NETMESSAGE msgId, uint32_t time, CDataStore
             msg->Get(type);
             uint32_t damage = 0;
             msg->Get(damage);
-            uint32_t absorbed = 0;
-            msg->Get(absorbed);
             uint32_t resisted = 0;
             msg->Get(resisted);
+            uint32_t absorbed = 0;
+            msg->Get(absorbed);
             CGUnit_C* unit = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(WOWGUID{ guid }, TYPE_UNIT, __FILE__, __LINE__));
 
             if (unit) {

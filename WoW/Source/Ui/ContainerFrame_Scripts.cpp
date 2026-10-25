@@ -854,7 +854,7 @@ static bool BuildItemIconPath(int32_t itemId, char* buffer, uint32_t size) {
         return false;
     }
 
-    ItemRec* rec = g_itemDB.GetRecord(itemId);
+    ItemRec* rec = CGItem_GetItemRec(itemId);
 
     if (!rec) {
         return false;

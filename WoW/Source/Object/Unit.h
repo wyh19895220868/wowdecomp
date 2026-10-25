@@ -61,7 +61,7 @@ class CGUnitData {
     /* 0038 */ WOWGUID m_unitFieldChannelObject;
     /* 0040 */ uint32_t m_unitChannelSpell;
     /* 0044 */ uint8_t m_unitFieldBytes0 [4];
-    /* 0048 */ int32_t m_unitFieldHealth;
+    /* 0048 */ uint32_t m_unitFieldHealth;
     /* 004C */ uint32_t m_unitFieldPower [7];
     /* 0068 */ uint32_t m_unitFieldMaxhealth;
     /* 006C */ uint32_t m_unitFieldMaxpower [7];

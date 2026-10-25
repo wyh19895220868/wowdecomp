@@ -203,7 +203,7 @@ class CGTooltip : public CSimpleFrame {
     void AppendText(const char* text);
     void ClearTooltip();
     void AddDeltaHeader(int32_t* first);
-    void AddColoredItemStat(int32_t value, const char* name, int32_t* first);
+    void AddColoredItemStat(int64_t value, const char* name, int32_t* first);
     int32_t SetItemDelta(const CGItemStatsSummary* summary, int32_t append);
     void SetBuff(int32_t spellId, int32_t a2, int32_t a3, int32_t a4, int32_t a5, int32_t a6);
     void SetFrameStack(bool showHidden);
@@ -246,7 +246,7 @@ class CGItemStatsSummary {
     static int32_t GetItemComparison(CGTooltip* first, CGTooltip* second, CGItemStatsSummary* result);
 
     /* 0000 */ float m_dps;
-    /* 0004 */ int32_t m_stats[73];
+    /* 0004 */ int64_t m_stats[73];
     /* 0128 */ uint32_t m_flags;
 
     CGItemStatsSummary();

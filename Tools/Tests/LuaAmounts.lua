@@ -1,0 +1,8 @@
+assert(string.format("%d", 4294967295) == "4294967295")
+assert(string.format("%u", 4294967295) == "4294967295")
+assert(string.format("%d", -4294967295) == "-4294967295")
+assert(string.format("%d", 9007199254740991) == "9007199254740991")
+assert(string.format("%08x", 4294967295) == "ffffffff")
+assert(string.format("%08X", 4294967295) == "FFFFFFFF")
+assert(string.format("%010d %%", 42) == "0000000042 %")
+print("Lua amount formatting: unsigned 32-bit, exact 53-bit and mask formatting passed")

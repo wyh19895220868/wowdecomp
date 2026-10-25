@@ -28,7 +28,7 @@ LOOT_ACQUIRE CGLootInfo::m_lootAcquire;
 LootSlot CGLootInfo::m_slots[18];
 
 // STATIC: 0x00BFA8D0
-int32_t CGLootInfo::m_coins;
+uint32_t CGLootInfo::m_coins;
 
 // STATIC: 0x00BFA8D8
 WOWGUID CGLootInfo::m_lootObj;
@@ -54,23 +54,37 @@ static const char* s_currencyTextureTokens[3] = { "COPPER_AMOUNT_TEXTURE", "SILV
 // STATIC: 0x00AF492C
 static const char* s_currencySymbolTokens[3] = { "COPPER_AMOUNT_SYMBOL", "SILVER_AMOUNT_SYMBOL", "GOLD_AMOUNT_SYMBOL" };
 
+static const char* CurrencyUnsignedFormat(const char* source, char* buffer, uint32_t size) {
+    SStrCopy(buffer, source ? source : "%u", size);
+
+    for (char* cursor = buffer; cursor[0] && cursor[1]; cursor++) {
+        if (cursor[0] == '%' && cursor[1] == 'd') {
+            cursor[1] = 'u';
+        }
+    }
+
+    return buffer;
+}
+
 // STATIC: 0x00D3813C
 static uint8_t s_lootInitialized;
 
 // VERIFY: cde3bd49 auto
 // OFFSET: 0x007E7E10
-void GetCurrencyTextureString(int32_t amount, char* buffer, uint32_t size, int32_t height) {
+void GetCurrencyTextureString(uint32_t amount, char* buffer, uint32_t size, int32_t height) {
     if (!amount) {
-        SStrPrintf(buffer, size, FrameScript_GetText(s_currencyTextureTokens[0], -1, GENDER_NOT_APPLICABLE), 0, height, height);
+        char format[1024];
+        const char* token = CurrencyUnsignedFormat(FrameScript_GetText(s_currencyTextureTokens[0], -1, GENDER_NOT_APPLICABLE), format, sizeof(format));
+        SStrPrintf(buffer, size, token, 0u, static_cast<uint32_t>(height), static_cast<uint32_t>(height));
         return;
     }
 
-    int32_t parts[3];
+    uint32_t parts[3];
     CurrencyBreakdown(amount, parts);
     *buffer = 0;
 
     for (int32_t i = 2; i >= 0; i--) {
-        int32_t value = parts[i];
+        uint32_t value = parts[i];
 
         if (!value) {
             continue;
@@ -81,7 +95,9 @@ void GetCurrencyTextureString(int32_t amount, char* buffer, uint32_t size, int32
         }
 
         char text[1024];
-        SStrPrintf(text, sizeof(text), FrameScript_GetText(s_currencyTextureTokens[i], -1, GENDER_NOT_APPLICABLE), value, height, height);
+        char format[1024];
+        const char* token = CurrencyUnsignedFormat(FrameScript_GetText(s_currencyTextureTokens[i], -1, GENDER_NOT_APPLICABLE), format, sizeof(format));
+        SStrPrintf(text, sizeof(text), token, value, static_cast<uint32_t>(height), static_cast<uint32_t>(height));
         SStrPack(buffer, text, size);
     }
 }
@@ -109,9 +125,9 @@ void LootDestroy() {
 
 // VERIFY: c5565767 manual
 // OFFSET: 0x007E7C70
-void CurrencyBreakdown(int32_t amount, int32_t* parts) {
+void CurrencyBreakdown(uint32_t amount, uint32_t* parts) {
     for (int32_t i = 2; i; i--) {
-        int32_t multiplier = static_cast<int32_t>(s_currencyMultiplier[i]);
+        uint32_t multiplier = s_currencyMultiplier[i];
 
         if (amount < multiplier) {
             parts[i] = 0;
@@ -126,13 +142,13 @@ void CurrencyBreakdown(int32_t amount, int32_t* parts) {
 
 // VERIFY: 4b725563 auto
 // OFFSET: 0x007E7D80
-void GetCurrencyText(int32_t amount, char* buffer, uint32_t size, const char* separator) {
-    int32_t parts[3];
+void GetCurrencyText(uint32_t amount, char* buffer, uint32_t size, const char* separator) {
+    uint32_t parts[3];
     CurrencyBreakdown(amount, parts);
     *buffer = 0;
 
     for (int32_t i = 2; i >= 0; i--) {
-        int32_t value = parts[i];
+        uint32_t value = parts[i];
 
         if (!value) {
             continue;
@@ -143,14 +159,15 @@ void GetCurrencyText(int32_t amount, char* buffer, uint32_t size, const char* se
         }
 
         char text[1024];
-        SStrPrintf(text, sizeof(text), FrameScript_GetText(s_currencyAmountTokens[i], -1, GENDER_NOT_APPLICABLE), value);
+        char format[1024];
+        SStrPrintf(text, sizeof(text), CurrencyUnsignedFormat(FrameScript_GetText(s_currencyAmountTokens[i], -1, GENDER_NOT_APPLICABLE), format, sizeof(format)), value);
         SStrPack(buffer, text, size);
     }
 }
 
 // VERIFY: b3b4c460 auto
 // OFFSET: 0x007E7CC0
-void GetCurrencyIcon(int32_t amount, char* buffer, uint32_t size) {
+void GetCurrencyIcon(uint32_t amount, char* buffer, uint32_t size) {
     const char* path = ClientDBStringLookup(SLOOKUP_INVENTORYICONPATH);
     SStrPrintf(buffer, size, "%s%s", path, *path ? "\\" : "");
 
@@ -321,7 +338,7 @@ const char* CGLootInfo::GetLootSlotTexture(uint32_t slot) {
 
     if (CGLootInfo::m_coins) {
         if (!slot) {
-            if (CGLootInfo::m_coins >= 0) {
+            if (CGLootInfo::m_coins > 0) {
                 GetCurrencyIcon(CGLootInfo::m_coins, s_lootSlotTexture, sizeof(s_lootSlotTexture));
                 return s_lootSlotTexture;
             }
@@ -484,7 +501,7 @@ void CGLootInfo::DoAutoLoot(int32_t a1) {
 // OFFSET: 0x00589100
 void CGPlayer_C::OnLootClearMoney() {
     if (CGLootInfo::m_coins > 0) {
-        CGLootInfo::m_coins = -1;
+        CGLootInfo::m_coins = 0;
         FrameScript_SignalEvent(SCRIPT_EVENT_LOOT_SLOT_CLEARED, "%d", 1);
 
         if (!CGLootInfo::HasLoot()) {
@@ -506,7 +523,7 @@ void CGLootInfo::LootSlot(uint32_t slot) {
         if (!slot) {
             if (CGLootInfo::m_coins > 0) {
                 player->LootMoney();
-                CGLootInfo::m_coins = -1;
+                CGLootInfo::m_coins = 0;
                 FrameScript_SignalEvent(SCRIPT_EVENT_LOOT_SLOT_CLEARED, "%d", 1);
 
                 if (!CGLootInfo::HasLoot()) {
@@ -643,7 +660,7 @@ void CGLootInfo::LootButtonItemStatsCallback(int32_t id, const WOWGUID& guid, vo
 
 // VERIFY: 98edc3f9 manual
 // OFFSET: 0x005896B0
-void CGLootInfo::SetObject(CGObject_C* object, int32_t coins, LOOT_ACQUIRE lootAcquire) {
+void CGLootInfo::SetObject(CGObject_C* object, uint32_t coins, LOOT_ACQUIRE lootAcquire) {
     if (CGLootInfo::m_lootObj) {
         CGObject_C* current = ClntObjMgrObjectPtr(CGLootInfo::m_lootObj, TYPE_OBJECT, __FILE__, __LINE__);
 
@@ -812,18 +829,18 @@ void CGLootInfo::ShutdownGame() {
 
 // VERIFY: 072a9880 auto
 // OFFSET: 0x007E7EE0
-void GetCurrencyShortText(int32_t amount, char* buffer, uint32_t size, const char* separator) {
+void GetCurrencyShortText(uint32_t amount, char* buffer, uint32_t size, const char* separator) {
     if (!amount) {
-        SStrPrintf(buffer, size, "%d%s", 0, FrameScript_GetText(s_currencySymbolTokens[0], -1, GENDER_NOT_APPLICABLE));
+        SStrPrintf(buffer, size, "%u%s", 0u, FrameScript_GetText(s_currencySymbolTokens[0], -1, GENDER_NOT_APPLICABLE));
         return;
     }
 
-    int32_t parts[3];
+    uint32_t parts[3];
     CurrencyBreakdown(amount, parts);
     *buffer = 0;
 
     for (int32_t i = 2; i >= 0; i--) {
-        int32_t value = parts[i];
+        uint32_t value = parts[i];
 
         if (!value) {
             continue;
@@ -834,7 +851,7 @@ void GetCurrencyShortText(int32_t amount, char* buffer, uint32_t size, const cha
         }
 
         char text[1024];
-        SStrPrintf(text, sizeof(text), "%d%s", value, FrameScript_GetText(s_currencySymbolTokens[i], -1, GENDER_NOT_APPLICABLE));
+        SStrPrintf(text, sizeof(text), "%u%s", value, FrameScript_GetText(s_currencySymbolTokens[i], -1, GENDER_NOT_APPLICABLE));
         SStrPack(buffer, text, size);
     }
 }

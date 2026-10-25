@@ -1178,11 +1178,15 @@ uint32_t CGPlayer_C::GetSkillValue(int32_t index) const {
 
 // VERIFY: afe2eea5 auto
 // OFFSET: 0x0051A2B0
-uint32_t CGPlayer_C::GetCoinage() const {
+uint64_t CGPlayer_C::GetCoinage() const {
     if (this->m_obj->m_guid != ClntObjMgrGetActivePlayer()) {
         return 0;
     }
 
+#if defined(_WIN64)
+    uint64_t money = 0;
+    if (NativeUIGetPlayerMoney(money)) return money;
+#endif
     return this->m_player->m_playerFieldCoinage;
 }
 
@@ -7363,7 +7367,7 @@ void CGPlayer_C::UnsetActiveMirrorHandlers() {
 
 struct QuestCompleteRewards {
     /* 0000 */ int32_t m_xp;
-    /* 0004 */ int32_t m_money;
+    /* 0004 */ uint32_t m_money;
     /* 0008 */ int32_t m_honor;
     /* 000C */ int32_t m_talents;
     /* 0010 */ int32_t m_arenaPoints;
@@ -7822,7 +7826,7 @@ int32_t __stdcall CGPlayer_C::OnQuestGiverQuestComplete(CDataStore* msg) {
     uint32_t questId;
     msg->Get(questId);
     msg->Get(reinterpret_cast<uint32_t&>(rewards->m_xp));
-    msg->Get(reinterpret_cast<uint32_t&>(rewards->m_money));
+    msg->Get(rewards->m_money);
     msg->Get(reinterpret_cast<uint32_t&>(rewards->m_honor));
     msg->Get(reinterpret_cast<uint32_t&>(rewards->m_talents));
     msg->Get(reinterpret_cast<uint32_t&>(rewards->m_arenaPoints));
@@ -12254,10 +12258,10 @@ int32_t OnUpdateMoney(WOWGUID guid, uint32_t offset, uint32_t count, const void*
         return 1;
     }
 
-    uint32_t coinage = player->m_obj->m_guid == ClntObjMgrGetActivePlayer() ? player->m_player->m_playerFieldCoinage : 0;
+    uint64_t coinage = player->GetCoinage();
 
     if (tradeMoney > coinage) {
-        CGTradeInfo::RemoveMoney(tradeMoney - player->GetCoinage());
+        CGTradeInfo::RemoveMoney(static_cast<uint32_t>(tradeMoney - coinage));
     }
 
     return 1;
@@ -14144,8 +14148,8 @@ int32_t CGPlayer_C::OnItemRefundResult(CDataStore* msg) {
         return 1;
     }
 
-    int32_t money;
-    msg->Get(reinterpret_cast<uint32_t&>(money));
+    uint32_t money;
+    msg->Get(money);
     int32_t honor;
     msg->Get(reinterpret_cast<uint32_t&>(honor));
     int32_t arena;

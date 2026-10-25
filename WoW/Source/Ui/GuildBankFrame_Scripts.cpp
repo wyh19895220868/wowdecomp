@@ -346,7 +346,7 @@ static int32_t Script_GetGuildBankItemInfo(lua_State* L) {
     GuildBankSlotInfo* info;
     ItemRec* rec;
 
-    if (tab < 6 && slot < CGGuildBankInfo::m_tabSlots[tabByte].m_count && (info = &CGGuildBankInfo::m_tabSlots[tab].m_data[slot])->m_itemID && info && ClntObjMgrGetActivePlayerObj() && (rec = g_itemDB.GetRecord(info->m_itemID))) {
+    if (tab < 6 && slot < CGGuildBankInfo::m_tabSlots[tabByte].m_count && (info = &CGGuildBankInfo::m_tabSlots[tab].m_data[slot])->m_itemID && info && ClntObjMgrGetActivePlayerObj() && (rec = CGItem_GetItemRec(info->m_itemID))) {
         const char* path = ClientDBStringLookup(SLOOKUP_INVENTORYICONPATH);
         char texture[260];
         SStrPrintf(texture, sizeof(texture), "%s%s%s", path, *path ? "\\" : "", CGItem_C::GetInventoryArt(rec->m_displayInfoID));
@@ -418,7 +418,7 @@ static int32_t Script_PickupGuildBankItem(lua_State* L) {
         Spell_C_StopTargeting();
     }
 
-    ItemRec* rec = g_itemDB.GetRecord(info->m_itemID);
+    ItemRec* rec = CGItem_GetItemRec(info->m_itemID);
 
     if (rec) {
         uint32_t bankSlot = slot + 98 * tab;

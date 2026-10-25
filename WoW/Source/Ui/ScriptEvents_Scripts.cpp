@@ -358,7 +358,7 @@ static int32_t Script_UnitHealth(lua_State* L) {
         return 0;
     }
 
-    int32_t health = 0;
+    uint32_t health = 0;
     WOWGUID guid = WOWGUID();
     Script_GetGUIDFromToken(lua_tolstring(L, 1, nullptr), guid, false);
     WOWGUID unitGuid = guid;
@@ -675,7 +675,7 @@ static int32_t Script_UnitHealthMax(lua_State* L) {
         return 0;
     }
 
-    int32_t maxHealth = 0;
+    uint32_t maxHealth = 0;
     WOWGUID guid = WOWGUID();
     Script_GetGUIDFromToken(lua_tolstring(L, 1, nullptr), guid, false);
     WOWGUID unitGuid = guid;
@@ -741,7 +741,7 @@ static int32_t Script_GetMoney(lua_State* L) {
         return 1;
     }
 
-    lua_pushnumber(L, player->GetCoinage());
+    lua_pushnumber(L, static_cast<lua_Number>(player->GetCoinage()));
     return 1;
 }
 
@@ -3439,7 +3439,7 @@ static int32_t PushItemStatsTable(lua_State* L, const CGItemStatsSummary* summar
             continue;
         }
 
-        int32_t value = summary->m_stats[i];
+        int64_t value = summary->m_stats[i];
         char buffer[1024];
         const char* name = CGItem_C::GetStatName(i, buffer, sizeof(buffer));
 

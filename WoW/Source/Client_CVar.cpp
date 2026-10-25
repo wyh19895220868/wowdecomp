@@ -648,6 +648,7 @@ void ClientRegisterConsoleCommands() {
     s_cvExpansionMovie = CVar::Register("expansionMovie", "Show expansion movie on startup", 0, "1", nullptr, CATEGORY_GAME, false, nullptr, false);
     s_cvMovieSubtitle = CVar::Register("movieSubtitle", "Show movie subtitles", 0, "0", nullptr, CATEGORY_GAME, false, nullptr, false);
     g_checkAddonVersionVar = CVar::Register("checkAddonVersion", "Check interface addon version number", 0, "1", nullptr, CATEGORY_GAME, false, nullptr, false);
+    CVar::Register("nativeCombatText", "Render native 64-bit floating combat text", 0, "1", nullptr, CATEGORY_GAME, false, nullptr, false);
 
     char mouseSpeed[32];
     SStrPrintf(mouseSpeed, sizeof(mouseSpeed), "%1.1f", OsInputGetMouseSpeed());

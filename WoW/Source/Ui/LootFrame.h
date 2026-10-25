@@ -40,7 +40,7 @@ class CGLootInfo {
     static uint32_t m_itemsPending;
     static LOOT_ACQUIRE m_lootAcquire;
     static LootSlot m_slots[18];
-    static int32_t m_coins;
+    static uint32_t m_coins;
     static WOWGUID m_lootObj;
     static int32_t m_autolooted;
 
@@ -53,7 +53,7 @@ class CGLootInfo {
     static void ConfirmLootSlot(uint32_t slot);
     static void GiveMasterLoot(uint32_t slot, WOWGUID target);
     static void LootButtonItemStatsCallback(int32_t id, const WOWGUID& guid, void* param, bool success);
-    static void SetObject(CGObject_C* object, int32_t coins, LOOT_ACQUIRE lootAcquire);
+    static void SetObject(CGObject_C* object, uint32_t coins, LOOT_ACQUIRE lootAcquire);
     static void ClearSlot(uint8_t slot);
     static void OnLootSlotChanged(uint8_t slot);
     static int32_t GetLootItem(uint32_t slot);
@@ -79,10 +79,10 @@ class CGLootDisplay {
 void LootInfoRegisterScriptFunctions();
 void LootInfoUnregisterScriptFunctions();
 
-void CurrencyBreakdown(int32_t amount, int32_t* parts);
-void GetCurrencyTextureString(int32_t amount, char* buffer, uint32_t size, int32_t height);
-void GetCurrencyText(int32_t amount, char* buffer, uint32_t size, const char* separator);
-void GetCurrencyShortText(int32_t amount, char* buffer, uint32_t size, const char* separator);
-void GetCurrencyIcon(int32_t amount, char* buffer, uint32_t size);
+void CurrencyBreakdown(uint32_t amount, uint32_t* parts);
+void GetCurrencyTextureString(uint32_t amount, char* buffer, uint32_t size, int32_t height);
+void GetCurrencyText(uint32_t amount, char* buffer, uint32_t size, const char* separator);
+void GetCurrencyShortText(uint32_t amount, char* buffer, uint32_t size, const char* separator);
+void GetCurrencyIcon(uint32_t amount, char* buffer, uint32_t size);
 
 #endif

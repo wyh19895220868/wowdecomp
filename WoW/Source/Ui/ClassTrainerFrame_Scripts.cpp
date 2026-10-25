@@ -403,7 +403,7 @@ static int32_t Script_GetTrainerServiceIcon(lua_State* L) {
 
     ItemRec* item;
 
-    if (CGClassTrainer::m_trainerType == TRAINER_TYPE_TRADESKILLS && (spell.m_effect[0] == SPELL_EFFECT_CREATE_ITEM || spell.m_effect[0] == SPELL_EFFECT_CREATE_ITEM_2 || spell.m_effect[0] == SPELL_EFFECT_CREATE_RANDOM_ITEM) && (item = g_itemDB.GetRecord(spell.m_effectItemType[0]))) {
+    if (CGClassTrainer::m_trainerType == TRAINER_TYPE_TRADESKILLS && (spell.m_effect[0] == SPELL_EFFECT_CREATE_ITEM || spell.m_effect[0] == SPELL_EFFECT_CREATE_ITEM_2 || spell.m_effect[0] == SPELL_EFFECT_CREATE_RANDOM_ITEM) && (item = CGItem_GetItemRec(spell.m_effectItemType[0]))) {
         const char* path = ClientDBStringLookup(SLOOKUP_INVENTORYICONPATH);
         char texture[260];
         SStrPrintf(texture, sizeof(texture), "%s%s%s", path, *path ? "\\" : "", CGItem_C::GetInventoryArt(item->m_displayInfoID));

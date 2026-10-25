@@ -504,7 +504,7 @@ static int32_t ExtractDirtyMasks(CDataStore* msg, uint8_t* blockCount, uint32_t*
     msg->Get(count);
     *blockCount = count;
 
-    if (count > 42) {
+    if (count > 64) {
         return 0;
     }
 
@@ -514,8 +514,8 @@ static int32_t ExtractDirtyMasks(CDataStore* msg, uint8_t* blockCount, uint32_t*
         msg->Get(masks[i]);
     }
 
-    if (i < 42) {
-        memset(&masks[i], 0, sizeof(uint32_t) * (42 - i));
+    if (i < 64) {
+        memset(&masks[i], 0, sizeof(uint32_t) * (64 - i));
     }
 
     return 1;
@@ -524,7 +524,7 @@ static int32_t ExtractDirtyMasks(CDataStore* msg, uint8_t* blockCount, uint32_t*
 // VERIFY: 3918bd3a manual
 // OFFSET: 0x004D3F80
 static int32_t SkipPartialObjectUpdate(CDataStore* msg) {
-    uint32_t masks[42];
+    uint32_t masks[64];
     uint8_t blockCount;
 
     if (!ExtractDirtyMasks(msg, &blockCount, masks)) {
@@ -912,7 +912,7 @@ static int32_t LinkPendingNodes(TSExplicitList<CMirrorHandler, offsetof(CMirrorH
 // VERIFY: 5cf2342e manual
 // OFFSET: 0x004D53C0
 static int32_t FillInPartialObjectData(CGObject_C* object, WOWGUID guid, CDataStore* msg, bool skipMirrorUpdate, bool zeroFillAbsent) {
-    uint32_t masks[42];
+    uint32_t masks[64];
     uint8_t blockCount;
 
     if (!ExtractDirtyMasks(msg, &blockCount, masks)) {
@@ -977,7 +977,7 @@ static int32_t CallMirrorHandlers(CDataStore* msg, bool postInit, WOWGUID guid) 
         return SkipPartialObjectUpdate(msg);
     }
 
-    uint32_t masks[42];
+    uint32_t masks[64];
     uint8_t blockCount;
 
     if (!ExtractDirtyMasks(msg, &blockCount, masks)) {
