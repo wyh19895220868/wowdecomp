@@ -174,12 +174,6 @@
 #include "WoW/Source/DB/Rec/CreatureFamilyRec.h"
 #include "WoW/Source/DB/Rec/CreatureTypeRec.h"
 
-namespace {
-// User inactivity thresholds in milliseconds; signed to match idleTime arithmetic.
-const int32_t AUTO_SIT_IDLE_TIME = 300000;
-const int32_t AUTO_LOGOUT_IDLE_TIME = 1800000;
-}
-
 static const float MAX_CAMERA_SHIFT_SQUARED = 900.0f;
 
 static const float TARGET_NEAREST_FRONT_MAX_DISTANCE_SQUARED = 1681.0f;
@@ -2084,26 +2078,6 @@ int32_t CGGameUI::Idle(const void* data, void* param) {
     g_capturePointUIManager.Update();
     DBCache_Idle();
     Script_SendUniqueSignals();
-
-    int32_t idleTime = OsGetAsyncTimeMs() - CSimpleTop::s_eventTime;
-
-    if (idleTime - AUTO_SIT_IDLE_TIME >= 0) {
-        if (idleTime - AUTO_LOGOUT_IDLE_TIME < 0) {
-            if (player) {
-                if (!player->m_unit->m_unitFieldBytes1[0] && !(player->m_unit->m_unitFieldFlags & 0x80000) && !player->IsMounted() && !player->IsAutoTracking()) {
-                    player->ChangeStandState(UNIT_SITTING);
-                }
-
-                if (!(player->m_unit->m_unitFieldFlags & 0x100000) && !CGChat::m_afk) {
-                    player->SetAFK(nullptr);
-                }
-            }
-        } else if (!ClientServices::Connection()->CharacterLoggingOut()) {
-            CGChat::AddChatMessage(FrameScript_GetText("IDLE_MESSAGE", -1, GENDER_NOT_APPLICABLE), 0, 0, 0, 0, 0, nullptr, WOWGUID(), 0, WOWGUID(), 0, 0, 0);
-            CGLCD::IdleDisconnectWarning();
-            ClientServices::Connection()->CharacterLogout(false, false);
-        }
-    }
 
     return 1;
 }
