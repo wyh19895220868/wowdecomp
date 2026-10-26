@@ -1572,6 +1572,10 @@ HandleLargeDamageAck = function(message)
 end
 
 local function RegisterDamagePrefixes()
+    if NativeUICombatLogData then
+        return
+    end
+
     for _, source in pairs(DAMAGE_SOURCES) do
         if RegisterAddonMessagePrefix then
             pcall(RegisterAddonMessagePrefix, source.prefix)
@@ -1595,6 +1599,30 @@ eventFrame:RegisterEvent("CVAR_UPDATE")
 eventFrame:RegisterEvent("CHAT_MSG_SYSTEM")
 eventFrame:RegisterEvent("CHAT_MSG_WHISPER")
 eventFrame:RegisterEvent("CHAT_MSG_ADDON")
+
+local nativeCombatLogElapsed = 0
+eventFrame:SetScript("OnUpdate", function(_, elapsed)
+    if not NativeUICombatLogData then
+        return
+    end
+
+    nativeCombatLogElapsed = nativeCombatLogElapsed + elapsed
+    if nativeCombatLogElapsed < 0.1 then
+        return
+    end
+    nativeCombatLogElapsed = 0
+
+    for _ = 1, 16 do
+        local amount, kind, incoming, sourceName, spellId = NativeUICombatLogData()
+        if not amount then
+            break
+        end
+
+        local spellName = ResolveSpellName(spellId)
+        local displayType = incoming == 1 and "INCOMING" or kind == 2 and "HEAL" or spellName and "SPELL" or "NORMAL"
+        AddRealCombatLogLine(amount, spellName, displayType, sourceName)
+    end
+end)
 
 eventFrame:SetScript("OnEvent", function(self, event, ...)
     if event == "ADDON_LOADED" then
@@ -1642,6 +1670,9 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
     end
 
     if event == "CHAT_MSG_ADDON" then
+        if NativeUICombatLogData then
+            return
+        end
         local prefix, message = ...
         SafeDispatchDamageMessage(event, prefix, message)
     end

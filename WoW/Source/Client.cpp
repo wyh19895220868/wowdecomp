@@ -2,6 +2,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <deque>
 #include <map>
 #include <vector>
 #include "Client.h"
@@ -942,6 +943,14 @@ static uint32_t s_nativeUIGrowthRevision = 0;
 // kind=5 payload cache: UITQ ALL_MODULE_DATA (item tooltip aggregation).
 static char s_nativeUITQData[65536] = { 0 };
 static uint32_t s_nativeUITQRevision = 0;
+struct NativeUICombatLogRecord {
+    char amount[80];
+    char sourceName[256];
+    uint8_t kind;
+    uint8_t incoming;
+    uint32_t spellId;
+};
+static std::deque<NativeUICombatLogRecord> s_nativeUICombatLog;
 
 // Unit resources are keyed by GUID; Lua receives decimal strings for every unit token.
 static std::map<uint64_t, std::map<std::string, std::string>> s_nativeUIUnitValues;
@@ -956,6 +965,7 @@ static void SendNativeUIHello();
 // OFFSET: 0x00403B70
 static int32_t LoadNewWorld(const void* data, void* param) {
     s_worldLoaded = false;
+    s_nativeUICombatLog.clear();
     ClientServices::Connection()->CharacterSetInGame(0);
     MovementDestroy();
     EventUnregister(EVENT_ID_IDLE, MovementIdleMoveUnits);
@@ -1183,6 +1193,39 @@ static int32_t Script_NativeUIHello(lua_State* L) {
     return 0;
 }
 
+static int32_t Script_NativeUITooltipQuery(lua_State* L) {
+    if (!s_nativeUIEnabled || !lua_isnumber(L, 1) || !lua_isnumber(L, 2))
+        return 0;
+
+    uint32_t itemId = static_cast<uint32_t>(lua_tointeger(L, 1));
+    uint32_t guidLow = static_cast<uint32_t>(lua_tointeger(L, 2));
+    if (!itemId || !guidLow)
+        return 0;
+
+    CDataStore msg;
+    msg.Put(static_cast<uint32_t>(CMSG_NATIVE_UI_TOOLTIP_QUERY));
+    msg.Put(static_cast<uint16_t>(1));
+    msg.Put(itemId);
+    msg.Put(guidLow);
+    msg.Finalize();
+    ClientServices::Send2(&msg);
+    return 0;
+}
+
+static int32_t Script_NativeUICombatLogData(lua_State* L) {
+    if (s_nativeUICombatLog.empty())
+        return 0;
+
+    NativeUICombatLogRecord record = s_nativeUICombatLog.front();
+    s_nativeUICombatLog.pop_front();
+    lua_pushstring(L, record.amount);
+    lua_pushnumber(L, record.kind);
+    lua_pushnumber(L, record.incoming);
+    lua_pushstring(L, record.sourceName);
+    lua_pushnumber(L, record.spellId);
+    return 5;
+}
+
 static bool s_nativeUIScriptsRegistered = false;
 static bool s_nativeUIBundledLuaLoaded = false;
 
@@ -1200,6 +1243,8 @@ static void NativeUIRegisterScriptFunctions() {
     FrameScript_RegisterFunction("NativeUIGrowthData", Script_NativeUIGrowthData);
     FrameScript_RegisterFunction("NativeUITQData", Script_NativeUITQData);
     FrameScript_RegisterFunction("NativeUIHello", Script_NativeUIHello);
+    FrameScript_RegisterFunction("NativeUITooltipQuery", Script_NativeUITooltipQuery);
+    FrameScript_RegisterFunction("NativeUICombatLogData", Script_NativeUICombatLogData);
 }
 
 struct NativeUIBundledAddon {
@@ -1446,6 +1491,24 @@ static int32_t Packet_SMSG_NATIVE_UI_SNAPSHOT(void* param, NETMESSAGE msgId, uin
     return 1;
 }
 
+static int32_t Packet_SMSG_NATIVE_UI_TOOLTIP_DATA(void* param, NETMESSAGE msgId, uint32_t time, CDataStore* msg) {
+    uint16_t version = 0;
+    uint32_t itemId = 0;
+    uint32_t guidLow = 0;
+    uint16_t length = 0;
+    if (!NativeUIRead(msg, version) || version != 1 || !NativeUIRead(msg, itemId) || !itemId ||
+        !NativeUIRead(msg, guidLow) || !guidLow || !NativeUIRead(msg, length) ||
+        length >= sizeof(s_nativeUITQData) || !NativeUIReadText(msg, length, s_nativeUITQData, sizeof(s_nativeUITQData)) ||
+        msg->m_read != msg->m_size)
+        return 1;
+
+    ++s_nativeUITQRevision;
+    (void)param;
+    (void)msgId;
+    (void)time;
+    return 1;
+}
+
 // ---------------------------------------------------------------------------
 // 335XS NativeUI v2: exact 256-bit floating combat text.
 // The stock combat text goes through COMBAT_TEXT_UPDATE with an int32 amount,
@@ -1463,27 +1526,49 @@ static int32_t Packet_SMSG_NATIVE_UI_COMBAT_TEXT(void* param, NETMESSAGE msgId, 
     uint8_t kind = 0;
     uint64_t rawGuid = 0;
     uint8_t schoolMask = 0;
+    uint32_t spellId = 0;
+    uint8_t incoming = 0;
+    char sourceName[256] = {};
     if (!NativeUIRead(msg, version) || !NativeUIRead(msg, kind) || !NativeUIRead(msg, rawGuid)) return 1;
     char amount[80] = {};
     if (version == 1) {
         uint64_t rawAmount = 0;
         if (!NativeUIRead(msg, rawAmount)) return 1;
         _snprintf_s(amount, sizeof(amount), _TRUNCATE, "%lld", static_cast<long long>(rawAmount));
-    } else if (version == 2) {
+    } else if (version == 2 || version == 3) {
         uint16_t length = 0;
         if (!NativeUIRead(msg, length) || length >= sizeof(amount) ||
             !NativeUIReadText(msg, length, amount, sizeof(amount)) || !NativeUIIsInt256(amount)) return 1;
     } else return 1;
-    if (!NativeUIRead(msg, schoolMask) || msg->m_read != msg->m_size || rawGuid == 0 ||
-        kind > 2 || NativeUIInteger(amount) <= 0) return 1;
+    if (!NativeUIRead(msg, schoolMask) || rawGuid == 0 || kind > 2 || NativeUIInteger(amount) <= 0) return 1;
+    if (version == 3) {
+        uint8_t nameLength = 0;
+        if (!NativeUIRead(msg, spellId) || !NativeUIRead(msg, incoming) || incoming > 1 ||
+            !NativeUIRead(msg, nameLength) || !NativeUIReadText(msg, nameLength, sourceName, sizeof(sourceName))) return 1;
+    }
+    if (msg->m_read != msg->m_size) return 1;
 
-    // Optional switch: addons that draw their own 64-bit combat text (for
-    // example DamageDisplayUI) set nativeCombatText=0 to avoid double text.
+    if (version == 3 && strlen(amount) >= 10 &&
+        (strlen(amount) > 10 || strcmp(amount, "2147483647") > 0) && s_nativeUICombatLog.size() < 256) {
+        NativeUICombatLogRecord record = {};
+        SStrCopy(record.amount, amount, sizeof(record.amount));
+        SStrCopy(record.sourceName, sourceName, sizeof(record.sourceName));
+        record.kind = kind;
+        record.incoming = incoming;
+        record.spellId = spellId;
+        s_nativeUICombatLog.push_back(record);
+    }
+
+    // Keep the native floating text switch independent from the combat-log queue.
     CVar* nativeCombatText = CVar::Lookup("nativeCombatText");
 
     if (nativeCombatText && !nativeCombatText->m_intValue) {
         return 1;
     }
+
+    bool needsNativeFloat = strlen(amount) > 10 || (strlen(amount) == 10 && strcmp(amount, "2147483647") > 0);
+    if (!needsNativeFloat)
+        return 1;
 
     WOWGUID guid;
     guid.m_guid = rawGuid;
@@ -1875,6 +1960,7 @@ void ClientInitializeGame(uint32_t mapId, C3Vector position) {
     ClientServices::SetMessageHandler(SMSG_TRANSFER_ABORTED, Packet_SMSG_TRANSFER_ABORTED, nullptr);
     ClientServices::SetMessageHandler(SMSG_LOGIN_VERIFY_WORLD, Packet_SMSG_LOGIN_VERIFY_WORLD, nullptr);
     ClientServices::SetMessageHandler(SMSG_NATIVE_UI_SNAPSHOT, Packet_SMSG_NATIVE_UI_SNAPSHOT, nullptr);
+    ClientServices::SetMessageHandler(SMSG_NATIVE_UI_TOOLTIP_DATA, Packet_SMSG_NATIVE_UI_TOOLTIP_DATA, nullptr);
     NativeUIRegisterScriptFunctions();
     ClientServices::SetMessageHandler(SMSG_NATIVE_UI_COMBAT_TEXT, Packet_SMSG_NATIVE_UI_COMBAT_TEXT, nullptr);
     ClientServices::SetMessageHandler(SMSG_KICK_REASON, CGlueMgr::OnKickReasonMsg, nullptr);
@@ -2108,6 +2194,7 @@ void ClientDestroyGame(int32_t charSelect, int32_t resumeGlue, int32_t worldLogi
     }
 
     s_botCheckEnabled = 0;
+    s_nativeUICombatLog.clear();
     EventUnregister(EVENT_ID_IDLE, ClientIdle);
     ClientServices::ClearMessageHandler(SMSG_NOTIFICATION);
     ClientServices::ClearMessageHandler(SMSG_PLAYED_TIME);
@@ -2118,6 +2205,7 @@ void ClientDestroyGame(int32_t charSelect, int32_t resumeGlue, int32_t worldLogi
     ClientServices::ClearMessageHandler(SMSG_CHANNEL_LIST);
     ClientServices::ClearMessageHandler(SMSG_LOGIN_VERIFY_WORLD);
     ClientServices::ClearMessageHandler(SMSG_NATIVE_UI_SNAPSHOT);
+    ClientServices::ClearMessageHandler(SMSG_NATIVE_UI_TOOLTIP_DATA);
     ClientServices::ClearMessageHandler(SMSG_NATIVE_UI_COMBAT_TEXT);
     ClientServices::ClearMessageHandler(SMSG_KICK_REASON);
 

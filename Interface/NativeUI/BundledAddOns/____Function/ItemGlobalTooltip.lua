@@ -2054,7 +2054,7 @@ local function Dream_RequestItemStoreData(ItemId, GuidLow, ItemIdStr, Bag, Slot,
 		Dream_ItemTooltipPendingSet(Dream_TooltipRequestPending.GuidLow, GuidLow);
 		Dream_ItemTooltipCooldownSet(Dream_TooltipRequestCooldown.GuidLow, GuidLow);
 		Dream_TooltipRequestedItemIdByGuid[GuidLow] = ItemId;
-		Dream_SendData("GetGuidLowStoreData", tostring(GuidLow) .. "$" .. tostring(ItemId));
+	NativeUITooltipQuery(ItemId, GuidLow);
 	end
 
 	if (Dream_IsTemplateItemSeriesEnabled()) then
@@ -3844,11 +3844,7 @@ for i=1,7 do
 	
 				if (GuidLow > 0) then
 					if (not IsShowGuidLowData(GuidLow, ItemId)) then
-						if (FrozenCore_RequestGuidCache) then
-							FrozenCore_RequestGuidCache(GuidLow, ItemId);
-						else
-							Dream_SendData("GetGuidLowStoreData", tostring(GuidLow) .. "$" .. tostring(ItemId));
-						end
+						NativeUITooltipQuery(ItemId, GuidLow);
 					else
 						Has = true;
 					end
