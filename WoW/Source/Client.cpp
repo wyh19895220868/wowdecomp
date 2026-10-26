@@ -1199,7 +1199,7 @@ static int32_t Script_NativeUITooltipQuery(lua_State* L) {
 
     uint32_t itemId = static_cast<uint32_t>(lua_tointeger(L, 1));
     uint32_t guidLow = static_cast<uint32_t>(lua_tointeger(L, 2));
-    if (!itemId || !guidLow)
+    if (!itemId)
         return 0;
 
     CDataStore msg;
@@ -1497,7 +1497,7 @@ static int32_t Packet_SMSG_NATIVE_UI_TOOLTIP_DATA(void* param, NETMESSAGE msgId,
     uint32_t guidLow = 0;
     uint16_t length = 0;
     if (!NativeUIRead(msg, version) || version != 1 || !NativeUIRead(msg, itemId) || !itemId ||
-        !NativeUIRead(msg, guidLow) || !guidLow || !NativeUIRead(msg, length) ||
+        !NativeUIRead(msg, guidLow) || !NativeUIRead(msg, length) ||
         length >= sizeof(s_nativeUITQData) || !NativeUIReadText(msg, length, s_nativeUITQData, sizeof(s_nativeUITQData)) ||
         msg->m_read != msg->m_size)
         return 1;

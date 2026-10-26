@@ -1149,7 +1149,8 @@ local function Dream_HasRenderableAllModuleData(ModuleData)
 		or Dream_IsModuleText(ModuleData.RuneData)
 		or Dream_IsModuleText(ModuleData.SetData)
 		or Dream_IsModuleText(ModuleData.HuanjingData)
-		or Dream_IsModuleText(ModuleData.PendingIdentifyData);
+		or Dream_IsModuleText(ModuleData.PendingIdentifyData)
+		or Dream_IsModuleText(ModuleData.TemplateStatsData);
 end
 
 local function Dream_ParseItemLinkStoreKey(ItemLink)
@@ -1462,6 +1463,47 @@ local function Dream_AddPositiveIntegerText(Left, Right)
 
 	local Text = table.concat(Out):gsub("^0+", "");
 	return (Text == "") and "0" or Text;
+end
+
+local function Dream_ApplyNativeTemplateStats(ModuleData)
+	if (not ModuleData or not ModuleData.ItemId or ModuleData.ItemId <= 0 or
+		not string.find(ModuleData.TemplateStatsData or "", "^TPL64|")) then
+		return false;
+	end
+
+	local Fields = Dream_SplitKeepEmpty(ModuleData.TemplateStatsData, "|");
+	local Types = {};
+	local Values = {};
+	for _, Stat in ipairs(Dream_Split(Fields[2] or "", ",")) do
+		local StatType, StatValue = string.match(Stat, "^(%d+)%s+([%+%-]?%d+)$");
+		if (StatType and StatValue and Dream_IsPositiveIntegerText(StatValue)) then
+			table.insert(Types, StatType);
+			table.insert(Values, StatValue);
+		end
+	end
+
+	local DamageMin = "0";
+	local DamageMax = "0";
+	for _, Damage in ipairs(Dream_Split(Fields[4] or "", ",")) do
+		local Min, Max = string.match(Damage, "^%s*([%+%-]?%d+)%s+([%+%-]?%d+)%s+");
+		if (Min and Max and Dream_IsPositiveIntegerText(Min) and Dream_IsPositiveIntegerText(Max)) then
+			DamageMin = Dream_AddPositiveIntegerText(DamageMin, Min);
+			DamageMax = Dream_AddPositiveIntegerText(DamageMax, Max);
+		end
+	end
+
+	local OldStat = Zs_EntryIdStoreData.BigItemStatData[ModuleData.ItemId] or {};
+	Zs_EntryIdStoreData.BigItemStatData[ModuleData.ItemId] = {
+		TStore = table.concat(Types, "#"),
+		VStore = table.concat(Values, "#"),
+		DmgMin = (DamageMin ~= "0") and DamageMin or OldStat.DmgMin,
+		DmgMax = (DamageMax ~= "0") and DamageMax or OldStat.DmgMax,
+		DPS = OldStat.DPS,
+		WeaponChecked = (DamageMin ~= "0" or DamageMax ~= "0") and true or OldStat.WeaponChecked,
+	};
+	Dream_MarkEntryCacheId(ModuleData.ItemId);
+	Dream_ItemTooltipPendingClear(Dream_TooltipRequestPending.EntryId, ModuleData.ItemId);
+	return true;
 end
 
 local function Dream_BuildModuleBaseAttributeMap(ModuleData)
@@ -2072,7 +2114,7 @@ local function Dream_RequestItemStoreData(ItemId, GuidLow, ItemIdStr, Bag, Slot,
 		NeedEntryData = true;
 		if (not EntryPending) then
 			Dream_ItemTooltipPendingSet(Dream_TooltipRequestPending.EntryId, ItemId);
-			Dream_SendData("GetEntryIdStoreData", ItemIdStr);
+			NativeUITooltipQuery(ItemId, GuidLow or 0);
 		end
 	end
 
@@ -3852,7 +3894,7 @@ for i=1,7 do
 	
 				if (ItemIdStr) then
 					if (not IsShowGEntryIdData(ItemId) or not IsShowBigItemStatData(ItemId)) then
-						Dream_SendData("GetEntryIdStoreData", ItemIdStr);
+						NativeUITooltipQuery(ItemId, 0);
 					end
 				end
 			end
@@ -3923,7 +3965,7 @@ local function Dream_OnItemCtAddonEvent(Self, event, Packet, Msg, Type, Sender)
 					end
 				end
 				local ModuleData = Dream_ParseAllModuleData(Msg);
-				if (ModuleData and ModuleData.ItemId and ModuleData.ItemId > 0 and ((ModuleData.GuidLow and ModuleData.GuidLow > 0) or (ModuleData.Bag ~= nil and ModuleData.Slot ~= nil))) then
+				if (ModuleData and ModuleData.ItemId and ModuleData.ItemId > 0 and ((ModuleData.GuidLow and ModuleData.GuidLow > 0) or (ModuleData.Bag ~= nil and ModuleData.Slot ~= nil) or Dream_IsModuleText(ModuleData.TemplateStatsData))) then
 					if (not Dream_HasRenderableAllModuleData(ModuleData)) then
 						if (ModuleData.GuidLow and ModuleData.GuidLow > 0) then
 							Dream_ItemTooltipPendingClear(Dream_TooltipRequestPending.AllModuleGuid, ModuleData.GuidLow);
@@ -3948,6 +3990,9 @@ local function Dream_OnItemCtAddonEvent(Self, event, Packet, Msg, Type, Sender)
 					if (LocationKey) then
 						Zs_GuidLowStoreData.AllModuleLocationData[LocationKey] = ModuleData;
 						Dream_ItemTooltipPendingClear(Dream_TooltipRequestPending.AllModuleLocation, LocationKey);
+					end
+					if (Dream_ApplyNativeTemplateStats(ModuleData)) then
+						Dream_RefreshOpenItemTooltips(ModuleData.ItemId);
 					end
 					Dream_ItemTooltipDebug("recv_all_module", ModuleData.ItemId, ModuleData.GuidLow, "bag=" .. tostring(ModuleData.Bag) .. " slot=" .. tostring(ModuleData.Slot) .. " base=" .. Dream_ItemTooltipBool(Dream_IsModuleText(ModuleData.BaseAttributes)) .. " add=" .. Dream_ItemTooltipBool(Dream_IsModuleText(ModuleData.AdditionalAttributes)) .. " skill=" .. Dream_ItemTooltipBool(Dream_IsModuleText(ModuleData.SkillsData)) .. " set=" .. Dream_ItemTooltipBool(Dream_IsModuleText(ModuleData.SetData)) .. " rune=" .. Dream_ItemTooltipBool(Dream_IsModuleText(ModuleData.RuneData)) .. " baseText=" .. Dream_ItemTooltipShort(ModuleData.BaseAttributes or "nil", 80));
 					if (not FrozenCore_DisableLegacyTooltipRequests) then
