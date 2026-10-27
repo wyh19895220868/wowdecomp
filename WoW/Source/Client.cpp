@@ -1270,6 +1270,7 @@ static const char* const s_nativeUIBundledFunctionFiles[] = {
 static const char* const s_nativeUIBundledFrozenFiles[] = { "FrozenCore.lua" };
 static const char* const s_nativeUIBundledItemForgeFiles[] = { "ItemForgeUI.lua" };
 static const char* const s_nativeUIBundledDamageFiles[] = { "DamageDisplayUI.lua", "NativeCombatText.lua" };
+static const char* const s_nativeUIBundledMaterialPreviewFiles[] = { "MaterialPreview.lua" };
 
 static const char* const s_nativeUIBundledFunctionVariables[] = {
     "Zs_GuidLowStoreData", "Zs_EntryIdStoreData", "BossHealthBarSavedVars", "ItemForgeUIDB", "MapProgressUIDB",
@@ -1283,6 +1284,7 @@ static const NativeUIBundledAddon s_nativeUIBundledAddons[] = {
     { "FrozenCore", s_nativeUIBundledFrozenFiles, sizeof(s_nativeUIBundledFrozenFiles) / sizeof(s_nativeUIBundledFrozenFiles[0]), s_nativeUIBundledFrozenVariables, sizeof(s_nativeUIBundledFrozenVariables) / sizeof(s_nativeUIBundledFrozenVariables[0]) },
     { "ItemForgeUI", s_nativeUIBundledItemForgeFiles, sizeof(s_nativeUIBundledItemForgeFiles) / sizeof(s_nativeUIBundledItemForgeFiles[0]), s_nativeUIBundledItemForgeVariables, sizeof(s_nativeUIBundledItemForgeVariables) / sizeof(s_nativeUIBundledItemForgeVariables[0]) },
     { "DamageDisplayUI", s_nativeUIBundledDamageFiles, sizeof(s_nativeUIBundledDamageFiles) / sizeof(s_nativeUIBundledDamageFiles[0]), s_nativeUIBundledDamageVariables, sizeof(s_nativeUIBundledDamageVariables) / sizeof(s_nativeUIBundledDamageVariables[0]) },
+    { "MaterialPreview", s_nativeUIBundledMaterialPreviewFiles, sizeof(s_nativeUIBundledMaterialPreviewFiles) / sizeof(s_nativeUIBundledMaterialPreviewFiles[0]), nullptr, 0 },
 };
 
 static void NativeUIBundledSavedVariablesPath(const NativeUIBundledAddon& addon, char* path, uint32_t pathSize) {
