@@ -462,6 +462,7 @@ void CGGameUI::RegisterGameCVars() {
     g_cvAutoInteract = CVar::Register("autoInteract", "Toggles auto-move to interact target", 0x10, s_locale == 1 ? "1" : "0", AutoInteractStateChangedCallback, CATEGORY_GAME, false, nullptr, false);
     g_autoStandCVar = CVar::Register("autoStand", "Automatically stand when needed", 0x10, "1", nullptr, CATEGORY_GAME, false, nullptr, false);
     g_autoFishingCVar = CVar::Register("autoFishing", "Automatically reel in a ready fishing bobber", 0x10, "1", nullptr, CATEGORY_GAME, false, nullptr, false);
+    CVar::Register("antiIdle", "Keep the world session alive while the client is in game", 0x10, "0", nullptr, CATEGORY_GAME, false, nullptr, false);
     g_autoDismountCVar = CVar::Register("autoDismount", "Automatically dismount when needed", 0x10, "1", nullptr, CATEGORY_GAME, false, nullptr, false);
     g_autoDismountFlyingCVar = CVar::Register("autoDismountFlying", "If enabled, your character will automatically dismount before casting while flying", 0x10, "0", nullptr, CATEGORY_GAME, false, nullptr, false);
     g_autoUnshiftCVar = CVar::Register("autoUnshift", "Automatically leave shapeshift form when needed", 0x10, "1", nullptr, CATEGORY_GAME, false, nullptr, false);

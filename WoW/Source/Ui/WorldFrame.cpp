@@ -2,6 +2,7 @@
 #include "Engine/Source/Base/ConvertUTF.h"
 #include <cstring>
 #include <typeinfo>
+#include "Engine/Source/Base/CDataStore.h"
 #include "Engine/Source/Base/Coordinate.h"
 #include "Engine/Source/Base/Status.h"
 #include "Engine/Source/ConsoleBase/ConsoleVar.h"
@@ -31,6 +32,8 @@
 #include "Engine/Source/lua-5.1/src/lua.h"
 #include "WoW/Common/TextureCache.h"
 #include "WoW/Source/Client.h"
+#include "WoW/Source/Net/Types.h"
+#include "WoW/Source/WowSvcs/WowSvcsClient/ClientServices.h"
 #include "WoW/Source/DB/DBClient/DBClient.h"
 #include "WoW/Source/DB/Rec/MapRec.h"
 #include "WoW/Source/DB/Rec/ScreenEffectRec.h"
@@ -1369,7 +1372,19 @@ int32_t CGWorldFrame::Update(const void* data, void* param) {
     CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPE_PLAYER, __FILE__, __LINE__));
 
     if (player) {
-        player->UpdateActiveMoverDisplay(OsGetAsyncTimeMs());
+        uint32_t now = OsGetAsyncTimeMs();
+        player->UpdateActiveMoverDisplay(now);
+
+        CVar* antiIdle = CVar::Lookup("antiIdle");
+        static uint32_t s_nextAntiIdle = 0;
+
+        if (antiIdle && antiIdle->m_intValue && static_cast<int32_t>(now - s_nextAntiIdle) >= 0) {
+            CDataStore msg;
+            msg.Put(static_cast<uint32_t>(CMSG_KEEP_ALIVE));
+            msg.Finalize();
+            ClientServices::Send2(&msg);
+            s_nextAntiIdle = now + 20000;
+        }
     }
 
     return 1;

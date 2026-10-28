@@ -28,6 +28,14 @@ if InterfaceOptions_AddCategory then
     description:SetPoint("TOPLEFT", fishing, "BOTTOMLEFT", 4, -8)
     description:SetText("配合“控制”中的“自动拾取”使用；下钩仍需手动。")
 
+    local antiIdle = CreateFrame("CheckButton", "NativeUIAntiIdle", features, "InterfaceOptionsCheckButtonTemplate")
+    antiIdle:SetPoint("TOPLEFT", description, "BOTTOMLEFT", -4, -12)
+    _G[antiIdle:GetName() .. "Text"]:SetText("挂机不掉线")
+    antiIdle.tooltipText = "在游戏内定期发送心跳，避免长时间不操作被服务器断开。"
+    antiIdle:SetScript("OnClick", function(self)
+        SetCVar("antiIdle", self:GetChecked() and "1" or "0")
+    end)
+
     local function addVideoToggle(name, label, tip, cvar, y)
         local parent = VideoOptionsFrame or UIParent
         local check = CreateFrame("CheckButton", name, parent, "InterfaceOptionsCheckButtonTemplate")
@@ -47,9 +55,13 @@ if InterfaceOptions_AddCategory then
     end
     addVideoToggle("NativeUILootBeam", "掉落光柱", "地面掉落物品显示品质颜色光柱。", "lootBeam", 46)
 
-    features.refresh = function() fishing:SetChecked(GetCVar("autoFishing") == "1") end
+    features.refresh = function()
+        fishing:SetChecked(GetCVar("autoFishing") == "1")
+        antiIdle:SetChecked(GetCVar("antiIdle") == "1")
+    end
     features.default = function()
         SetCVar("autoFishing", GetCVarDefault("autoFishing"))
+        SetCVar("antiIdle", GetCVarDefault("antiIdle"))
         features.refresh()
     end
     features:SetScript("OnShow", features.refresh)
