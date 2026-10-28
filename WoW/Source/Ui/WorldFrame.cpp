@@ -9,6 +9,7 @@
 #include "Engine/Source/Event/CKeyEvent.h"
 #include "Engine/Source/Event/CMouseEvent.h"
 #include "Engine/Source/Event/Event.h"
+#include "Engine/Source/FFX/EffectFXAA.h"
 #include "Engine/Source/FFX/EffectGlow.h"
 #include "Engine/Source/FFX/FFX.h"
 #include "Engine/Source/Frame/CRenderBatch.h"
@@ -133,6 +134,8 @@ FFX::Effect* CGWorldFrame::ffxEffectNetherWorld;
 
 // STATIC: 0x00B74364
 FFX::Effect* CGWorldFrame::ffxEffectGlow;
+
+FFX::Effect* CGWorldFrame::ffxEffectFXAA;
 
 // STATIC: 0x00B74368
 FFX::Effect* CGWorldFrame::ffxEffectDeath;
@@ -1267,6 +1270,7 @@ CGWorldFrame::CGWorldFrame(CSimpleFrame* parent) : CSimpleFrame(parent) {
     FFX::Init();
 
     CGWorldFrame::ffxEffectGlow = new (__FILE__, __LINE__) EffectGlow();
+    CGWorldFrame::ffxEffectFXAA = new (__FILE__, __LINE__) EffectFXAA();
     CGWorldFrame::ffxEffectDeath = new (__FILE__, __LINE__) EffectDeath();
     CGWorldFrame::ffxEffectNetherWorld = new (__FILE__, __LINE__) EffectNetherWorld();
     CGWorldFrame::ffxEffectSwirlingFog = new (__FILE__, __LINE__) EffectSwirlingFog();
@@ -1301,6 +1305,17 @@ void CGWorldFrame::RegisterFrames() {
     FrameXML_RegisterFactory("QuestPOIFrame", CGQuestPOIFrame::Create, false);
 }
 
+void CGWorldFrame::UseBaseScreenEffect() {
+    CVar* fxaa = CVar::Lookup("gxFXAA");
+
+    if (fxaa && fxaa->m_intValue && CGWorldFrame::ffxEffectFXAA && CGWorldFrame::ffxEffectFXAA->Valid()) {
+        FFX::SetEffect(CGWorldFrame::ffxEffectFXAA);
+        return;
+    }
+
+    FFX::SetEffect(CGWorldFrame::ffxEffectGlow);
+}
+
 // VERIFY: d1740d14 manual
 // OFFSET: 0x004F7020
 void CGWorldFrame::SetScreenEffect(int32_t effect) {
@@ -1308,7 +1323,7 @@ void CGWorldFrame::SetScreenEffect(int32_t effect) {
 
     if (!rec) {
         DayNight::ClearOverrideFog();
-        FFX::SetEffect(CGWorldFrame::ffxEffectGlow);
+        CGWorldFrame::UseBaseScreenEffect();
         DayNight::ClearOverrideLightParamsID();
         SI2::SetOverrideZoneSounds(0, 0);
         return;
@@ -1317,7 +1332,7 @@ void CGWorldFrame::SetScreenEffect(int32_t effect) {
     switch (rec->m_effect) {
         case 0:
             DayNight::ClearOverrideFog();
-            FFX::SetEffect(CGWorldFrame::ffxEffectGlow);
+            CGWorldFrame::UseBaseScreenEffect();
             break;
 
         case 1:
@@ -1384,6 +1399,16 @@ int32_t CGWorldFrame::Update(const void* data, void* param) {
             msg.Finalize();
             ClientServices::Send2(&msg);
             s_nextAntiIdle = now + 20000;
+        }
+    }
+
+    if (FFX::s_effect == CGWorldFrame::ffxEffectGlow || FFX::s_effect == CGWorldFrame::ffxEffectFXAA) {
+        CVar* fxaa = CVar::Lookup("gxFXAA");
+        int32_t want = fxaa && fxaa->m_intValue && CGWorldFrame::ffxEffectFXAA && CGWorldFrame::ffxEffectFXAA->Valid();
+        int32_t have = FFX::s_effect == CGWorldFrame::ffxEffectFXAA;
+
+        if (want != have) {
+            CGWorldFrame::SetScreenEffect(0);
         }
     }
 
@@ -2538,6 +2563,10 @@ CGWorldFrame::~CGWorldFrame() {
 
     if (CGWorldFrame::ffxEffectGlow) {
         delete CGWorldFrame::ffxEffectGlow;
+    }
+
+    if (CGWorldFrame::ffxEffectFXAA) {
+        delete CGWorldFrame::ffxEffectFXAA;
     }
 
     if (CGWorldFrame::ffxEffectDeath) {

@@ -54,6 +54,7 @@ if InterfaceOptions_AddCategory then
         sync()
     end
     addVideoToggle("NativeUILootBeam", "掉落光柱", "地面掉落物品显示品质颜色光柱。", "lootBeam", 46)
+    addVideoToggle("NativeUIFXAA", "FXAA 抗锯齿", "对画面做一次全屏边缘抗锯齿。", "gxFXAA", 18)
 
     features.refresh = function()
         fishing:SetChecked(GetCVar("autoFishing") == "1")

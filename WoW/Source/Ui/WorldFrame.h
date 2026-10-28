@@ -117,6 +117,7 @@ class CGWorldFrame : public CSimpleFrame {
     static FFX::Effect* ffxEffectSwirlingFog;
     static FFX::Effect* ffxEffectNetherWorld;
     static FFX::Effect* ffxEffectGlow;
+    static FFX::Effect* ffxEffectFXAA;
     static FFX::Effect* ffxEffectDeath;
     static CGWorldFrame* s_currentWorldFrame;
 
@@ -126,6 +127,7 @@ class CGWorldFrame : public CSimpleFrame {
     static void GetCameraPosition(C3Vector* position);
     static void RegisterFrames();
     static void SetScreenEffect(int32_t effect);
+    static void UseBaseScreenEffect();
     static void UpdateScreenEffect();
     static void UpdateScreenEffectParams();
     static int32_t Update(const void* data, void* param);
