@@ -13,13 +13,16 @@
 // STATIC: 0x00C7D328
 static uint16_t s_textureData[256 * 256];
 
+// Raster cap is 64px. Thick outlines add 4, and the edge pass reads one row past the cell.
+static const uint32_t kGlyphScratchRows = 72;
+
 // VERIFY: 7a9fdc75 manual
 // OFFSET: 0x006C8E70
 void TEXTURECACHE::PasteGlyphOutlinedMonochrome(const GLYPHBITMAPDATA& data, uint16_t* dest) {
     const uint8_t* source = static_cast<const uint8_t*>(data.m_data);
     uint32_t thick = this->m_theFace->m_fontFlags & 8;
 
-    uint16_t buffer[256 * 36];
+    uint16_t buffer[256 * kGlyphScratchRows];
     memset(buffer, 0, sizeof(buffer));
 
     uint32_t yStart = data.m_yStart;
@@ -161,9 +164,9 @@ void TEXTURECACHE::PasteGlyphOutlinedAA(const GLYPHBITMAPDATA& data, uint16_t* d
     const uint8_t* source = static_cast<const uint8_t*>(data.m_data);
     uint32_t thick = this->m_theFace->m_fontFlags & 8;
 
-    uint16_t alpha[256 * 36];
-    uint16_t coverage[256 * 36];
-    uint16_t state[256 * 36];
+    uint16_t alpha[256 * kGlyphScratchRows];
+    uint16_t coverage[256 * kGlyphScratchRows];
+    uint16_t state[256 * kGlyphScratchRows];
 
     memset(state, 0, sizeof(state));
     memset(coverage, 0, sizeof(coverage));

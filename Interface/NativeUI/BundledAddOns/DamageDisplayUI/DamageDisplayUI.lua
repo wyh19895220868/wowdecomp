@@ -651,8 +651,7 @@ local function ApplyTextScale(fontString, scale)
     scale = tonumber(scale) or 1
 
     if fontString.SetScale then
-        fontString:SetScale(scale)
-        return
+        fontString:SetScale(1)
     end
 
     if fontString.SetFont then
@@ -668,7 +667,12 @@ local function ApplyTextScale(fontString, scale)
         end
 
         if font and size then
-            fontString:SetFont(font, math.max(8, math.floor(size * scale + 0.5)), flags)
+            local pixelSize = math.max(8, math.floor(size * scale + 0.5))
+            if fontString.damageDisplayPixelSize ~= pixelSize or fontString.damageDisplayPixelFont ~= font then
+                fontString:SetFont(font, pixelSize, flags)
+                fontString.damageDisplayPixelSize = pixelSize
+                fontString.damageDisplayPixelFont = font
+            end
             return
         end
     end
@@ -689,11 +693,14 @@ local function ConfigureLargeFontString(fontString)
     end
     if fontString.GetFont then
         local font, size = fontString:GetFont()
+        local pixel = math.max(14, size or 28)
         fontString.damageDisplayBaseFont = font
-        fontString.damageDisplayBaseSize = size
+        fontString.damageDisplayBaseSize = pixel
         fontString.damageDisplayBaseFlags = "OUTLINE"
         if font and fontString.SetFont then
-            fontString:SetFont(font, math.max(14, size or 28), "OUTLINE")
+            fontString:SetFont(font, pixel, "OUTLINE")
+            fontString.damageDisplayPixelSize = pixel
+            fontString.damageDisplayPixelFont = font
         end
     end
     if fontString.SetShadowColor then

@@ -68,8 +68,8 @@ int32_t CGxFont::UpdateDimensions() {
 
     uint32_t pixelSize = static_cast<uint32_t>(ScreenToPixelHeight(0, height));
 
-    if (pixelSize > 32) {
-        pixelSize = 32;
+    if (pixelSize > 64) {
+        pixelSize = 64;
     } else if (pixelSize == 0) {
         DebugLog("Error, font %s being created with height %g at screen res of %dx%d which is %d pixels!", this->m_fontName, height, g_widthPixels, g_heightPixels, pixelSize);
     }
