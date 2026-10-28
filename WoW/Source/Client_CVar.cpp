@@ -119,6 +119,8 @@ CVar* g_accountListVar;
 // STATIC: 0x00B2F990
 CVar* g_accountNameVar;
 
+CVar* g_accountPasswordVar;
+
 // STATIC: 0x00B2F9F8
 CVar* s_cvarUIFaster;
 
@@ -642,6 +644,7 @@ void ClientRegisterConsoleCommands() {
     ConsoleCommandRegister("perf", CCommand_Perf, CATEGORY_DEBUG, nullptr);
 
     g_accountNameVar = CVar::Register("accountName", "Saved account name", 0x40, "", nullptr, CATEGORY_GAME, false, nullptr, false);
+    g_accountPasswordVar = CVar::Register("accountPassword", "Saved account password", 0x40, "", nullptr, CATEGORY_GAME, false, nullptr, false);
     g_accountListVar = CVar::Register("accountList", "List of wow accounts for saved Blizzard account", 0, "", nullptr, CATEGORY_GAME, false, nullptr, false);
     g_accountUsesTokenVar = CVar::Register("g_accountUsesToken", "Saved whether uses authenticator", 0, "0", nullptr, CATEGORY_GAME, false, nullptr, false);
     s_cvMovie = CVar::Register("movie", "Show movie on startup", 0, "1", nullptr, CATEGORY_GAME, false, nullptr, false);

@@ -48,6 +48,7 @@ struct ARCHIVEINFO {
 
 extern CVar* g_accountListVar;
 extern CVar* g_accountNameVar;
+extern CVar* g_accountPasswordVar;
 extern CVar* g_accountUsesTokenVar;
 extern CVar* g_checkAddonVersionVar;
 extern HEVENTCONTEXT g_clientEventContext;

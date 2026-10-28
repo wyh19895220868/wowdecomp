@@ -1,6 +1,7 @@
 #include "GlueMgr.h"
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include "Engine/Source/Base/Coordinate.h"
 #include "Engine/Source/BlizzardCore/SFile2-Core.h"
 #include "Engine/Source/BlizzardCore/Source/Packages/Streaming/Streaming.h"
@@ -73,6 +74,83 @@ static int32_t Script_SetSavedAccountName(lua_State* L) {
 
     g_accountNameVar->Set(lua_tolstring(L, 1, nullptr), true, false, false, true);
     return 0;
+}
+
+static const uint8_t s_passwordMask[8] = { 0x53, 0x17, 0xA9, 0x6E, 0xC2, 0x3B, 0x84, 0xD1 };
+
+static void EncodeSavedPassword(const char* password, char* stored, size_t storedSize) {
+    stored[0] = '\0';
+
+    if (!password || !password[0] || storedSize < 3) {
+        return;
+    }
+
+    size_t length = strlen(password);
+
+    if (length > 64) {
+        length = 64;
+    }
+
+    if (storedSize < length * 2 + 1) {
+        return;
+    }
+
+    for (size_t i = 0; i < length; i++) {
+        uint8_t value = static_cast<uint8_t>(password[i]) ^ s_passwordMask[i % 8];
+        sprintf(stored + i * 2, "%02X", value);
+    }
+}
+
+static void DecodeSavedPassword(const char* stored, char* password, size_t passwordSize) {
+    password[0] = '\0';
+
+    if (!stored || !passwordSize) {
+        return;
+    }
+
+    size_t hex = strlen(stored);
+
+    if (!hex || (hex % 2) != 0) {
+        return;
+    }
+
+    size_t length = hex / 2;
+
+    if (length >= passwordSize) {
+        length = passwordSize - 1;
+    }
+
+    for (size_t i = 0; i < length; i++) {
+        unsigned int value = 0;
+
+        if (sscanf(stored + i * 2, "%02X", &value) != 1) {
+            password[0] = '\0';
+            return;
+        }
+
+        password[i] = static_cast<char>(static_cast<uint8_t>(value) ^ s_passwordMask[i % 8]);
+    }
+
+    password[length] = '\0';
+}
+
+static int32_t Script_SetSavedAccountPassword(lua_State* L) {
+    if (!lua_isstring(L, 1)) {
+        luaL_error(L, "Usage: SetSavedAccountPassword(\"password\")");
+        return 0;
+    }
+
+    char stored[160];
+    EncodeSavedPassword(lua_tolstring(L, 1, nullptr), stored, sizeof(stored));
+    g_accountPasswordVar->Set(stored, true, false, false, true);
+    return 0;
+}
+
+static int32_t Script_GetSavedAccountPassword(lua_State* L) {
+    char password[80];
+    DecodeSavedPassword(g_accountPasswordVar->m_stringValue.m_str, password, sizeof(password));
+    lua_pushstring(L, password);
+    return 1;
 }
 
 // VERIFY: e4dc65d8 auto
@@ -1605,6 +1683,8 @@ static FrameScript_Method s_scriptFunctions[] = {
     { "GetLocale", &Script_GetLocale },
     { "GetSavedAccountName", &Script_GetSavedAccountName },
     { "SetSavedAccountName", &Script_SetSavedAccountName },
+    { "GetSavedAccountPassword", &Script_GetSavedAccountPassword },
+    { "SetSavedAccountPassword", &Script_SetSavedAccountPassword },
     { "GetUsesToken", &Script_GetUsesToken },
     { "SetUsesToken", &Script_SetUsesToken },
     { "GetSavedAccountList", &Script_GetSavedAccountList },

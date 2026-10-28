@@ -759,6 +759,38 @@ void CGlueMgr::Resume() {
 #endif
 
             FrameScript_SignalEvent(GLUE_EVENT_FRAMES_LOADED, nullptr);
+            FrameScript_Execute(
+                "if AccountLoginAccountEdit and GetSavedAccountPassword then\n"
+                "  local function fill()\n"
+                "    local name = GetSavedAccountName and GetSavedAccountName() or ''\n"
+                "    local password = GetSavedAccountPassword() or ''\n"
+                "    if name ~= '' and AccountLoginAccountEdit:GetText() == '' then AccountLoginAccountEdit:SetText(name) end\n"
+                "    if password ~= '' and AccountLoginPasswordEdit then AccountLoginPasswordEdit:SetText(password) end\n"
+                "  end\n"
+                "  local function save()\n"
+                "    if not SetSavedAccountPassword or not AccountLoginPasswordEdit then return end\n"
+                "    if AccountLoginSavePassword and not AccountLoginSavePassword:GetChecked() then SetSavedAccountPassword('') return end\n"
+                "    SetSavedAccountPassword(AccountLoginPasswordEdit:GetText() or '')\n"
+                "  end\n"
+                "  if AccountLoginSaveAccountName and not AccountLoginSavePassword then\n"
+                "    local ok, box = pcall(CreateFrame, 'CheckButton', 'AccountLoginSavePassword', AccountLoginSaveAccountName:GetParent(), 'OptionsCheckButtonTemplate')\n"
+                "    if not ok then ok, box = pcall(CreateFrame, 'CheckButton', 'AccountLoginSavePassword', AccountLoginSaveAccountName:GetParent(), 'UICheckButtonTemplate') end\n"
+                "    if ok and box then\n"
+                "      box:SetPoint('TOPLEFT', AccountLoginSaveAccountName, 'BOTTOMLEFT', 0, -2)\n"
+                "      local label = _G['AccountLoginSavePasswordText']\n"
+                "      if label then label:SetText('保存密码') end\n"
+                "      box:SetChecked((GetSavedAccountPassword() or '') ~= '')\n"
+                "    end\n"
+                "  end\n"
+                "  if AccountLogin_Login then\n"
+                "    local original = AccountLogin_Login\n"
+                "    AccountLogin_Login = function(...) save() return original(...) end\n"
+                "  end\n"
+                "  fill()\n"
+                "  if AccountLogin and AccountLogin.HookScript then AccountLogin:HookScript('OnShow', fill) end\n"
+                "end\n",
+                "SavedPassword.lua",
+                nullptr);
             CGlueMgr::InitializeFFX();
 
             ClientServices::SetMessageHandler(SMSG_CHARACTER_RENAME_RESULT, CGlueMgr::OnCharRenameResult, nullptr);
