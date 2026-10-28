@@ -1,7 +1,7 @@
 ## Interface: 30300
 ## Title: 自定义功能组件
 ## Notes: 自定义功能组件
-## SavedVariables: Zs_GuidLowStoreData, Zs_EntryIdStoreData, BossHealthBarSavedVars, ItemForgeUIDB, MapProgressUIDB
+## SavedVariables: Zs_GuidLowStoreData, Zs_EntryIdStoreData, BossHealthBarSavedVars, ItemForgeUIDB, MapProgressUIDB, ItemCardsUIState
 
 DreamTemplate.xml
 ___DreamConfig.lua
