@@ -28,6 +28,25 @@ if InterfaceOptions_AddCategory then
     description:SetPoint("TOPLEFT", fishing, "BOTTOMLEFT", 4, -8)
     description:SetText("配合“控制”中的“自动拾取”使用；下钩仍需手动。")
 
+    local function addVideoToggle(name, label, tip, cvar, y)
+        local parent = VideoOptionsFrame or UIParent
+        local check = CreateFrame("CheckButton", name, parent, "InterfaceOptionsCheckButtonTemplate")
+        check:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", 32, y)
+        check:SetFrameStrata("DIALOG")
+        local text = _G[check:GetName() .. "Text"]
+        if text then text:SetText(label) end
+        check.tooltipText = tip
+        check:SetScript("OnClick", function(self)
+            SetCVar(cvar, self:GetChecked() and "1" or "0")
+        end)
+        local function sync()
+            check:SetChecked(GetCVar(cvar) == "1")
+        end
+        if parent.HookScript then parent:HookScript("OnShow", sync) end
+        sync()
+    end
+    addVideoToggle("NativeUILootBeam", "掉落光柱", "地面掉落物品显示品质颜色光柱。", "lootBeam", 46)
+
     features.refresh = function() fishing:SetChecked(GetCVar("autoFishing") == "1") end
     features.default = function()
         SetCVar("autoFishing", GetCVarDefault("autoFishing"))

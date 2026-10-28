@@ -67,6 +67,8 @@ class CGItem_C : public CGObject_C, public CGItem {
 
     ~CGItem_C() override;
     void PostReenable() override;
+    int32_t GetModelFileName(const char** name) const override;
+    void ModelLoaded(CM2Model* model) override;
     int32_t GetSelectionHighlightColor(CImVector* color) const override;
     void OnRightClick() override;
     const char* GetObjectName() const override;

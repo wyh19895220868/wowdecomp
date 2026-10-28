@@ -2,6 +2,8 @@
 #include "WoW/Source/DB/Rec/ItemVisualsRec.h"
 #include "WoW/Source/Ui/ItemSocketInfo.h"
 #include "WoW/Source/Ui/LootFrame.h"
+#include "Engine/Source/ConsoleBase/ConsoleVar.h"
+#include "Engine/Source/Model2/M2Model.h"
 #include "Engine/Source/Services/SysMessage.h"
 #include "Engine/Source/Services/Texture.h"
 #include "WoW/Source/DB/Rec/ItemDisplayInfoRec.h"
@@ -1757,6 +1759,63 @@ int32_t CGItem_C::UseItem(WOWGUID* target, int32_t confirmed) {
     CGItem_C::s_bindOnUseTarget = *target;
     FrameScript_SignalEvent(SCRIPT_EVENT_USE_BIND_CONFIRM, nullptr);
     return 0;
+}
+
+static int32_t ItemIsWorldDrop(const CGItem_C* item) {
+    if (!item || !item->m_obj || !item->m_item) {
+        return 0;
+    }
+
+    // A drop contains itself. Bag and bank items point at a container.
+    WOWGUID contained = item->m_item->m_itemFieldContained;
+    return contained.m_guid == 0 || contained == item->m_obj->m_guid;
+}
+
+// Ground loot uses one stock spell column. The video cvar turns it on.
+int32_t CGItem_C::GetModelFileName(const char** name) const {
+    if (!name || !ItemIsWorldDrop(this)) {
+        return 0;
+    }
+
+    CVar* beam = CVar::Lookup("lootBeam");
+
+    if (!beam || !beam->m_intValue) {
+        return 0;
+    }
+
+    *name = "Spells\\BeamTarget_State_Base.mdx";
+    return 1;
+}
+
+void CGItem_C::ModelLoaded(CM2Model* model) {
+    this->CGObject_C::ModelLoaded(model);
+
+    if (!model || model != this->GetObjectModel() || !ItemIsWorldDrop(this)) {
+        return;
+    }
+
+    static const float s_qualityTint[8][3] = {
+        { 0.62f, 0.62f, 0.62f },
+        { 1.00f, 1.00f, 1.00f },
+        { 0.12f, 1.00f, 0.00f },
+        { 0.00f, 0.44f, 0.87f },
+        { 0.64f, 0.21f, 0.93f },
+        { 1.00f, 0.50f, 0.00f },
+        { 0.90f, 0.80f, 0.50f },
+        { 0.00f, 0.80f, 1.00f },
+    };
+
+    uint32_t quality = 1;
+    WOWGUID none = WOWGUID();
+    ItemStats_C* stats = g_itemDBCache.GetRecord(this->m_obj->m_entryID, none, nullptr, nullptr, false);
+
+    if (stats && stats->m_quality < 8) {
+        quality = stats->m_quality;
+    }
+
+    model->m_diffuseTintR = s_qualityTint[quality][0];
+    model->m_diffuseTintG = s_qualityTint[quality][1];
+    model->m_diffuseTintB = s_qualityTint[quality][2];
 }
 
 // VERIFY: 6c2aeb5c manual

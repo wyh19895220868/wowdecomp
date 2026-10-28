@@ -661,6 +661,7 @@ void ClientRegisterConsoleCommands() {
     s_cvErrorFilter = CVar::Register("ErrorFilter", nullptr, 0, "all", ErrorDisplayFilterCallback, CATEGORY_DEBUG, false, nullptr, false);
     s_desktopGammaCvar = CVar::Register("DesktopGamma", nullptr, 0, "0", DesktopGammaCallback, CATEGORY_GRAPHICS, false, nullptr, false);
     s_gammaCvar = CVar::Register("Gamma", nullptr, 0, "1.0", GammaCallback, CATEGORY_GRAPHICS, false, nullptr, false);
+    CVar::Register("lootBeam", "Colored light pillars on items lying on the ground", 3, "0", nullptr, CATEGORY_GRAPHICS, false, nullptr, false);
     g_lastCharacterIndexVar = CVar::Register("lastCharacterIndex", "Last character selected", 0, "0", nullptr, CATEGORY_GAME, false, nullptr, false);
     g_readTOSVar = CVar::Register("readTOS", "Status of the TOS", 0, "0", nullptr, CATEGORY_GAME, false, nullptr, false);
     g_readEULAVar = CVar::Register("readEULA", "Status of the EULA", 0, "0", nullptr, CATEGORY_GAME, false, nullptr, false);
