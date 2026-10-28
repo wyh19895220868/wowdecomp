@@ -227,6 +227,7 @@ OsTimeManager::OsTimeManager(OsTimeManager::TimingMethod method) {
 
     this->m_scaleToMs = 1000.0 / static_cast<double>(clocksPerSecond);
     this->m_timeBegin = 0.0;
+    this->m_timeBegin = -static_cast<double>(this->Snapshot());
 }
 
 // VERIFY: 46e9a018 manual
