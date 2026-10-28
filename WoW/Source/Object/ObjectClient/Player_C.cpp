@@ -10056,16 +10056,20 @@ void CGPlayer_C::SwapItems(WOWGUID item, WOWGUID srcContainer, uint32_t srcSlot,
                 s_itemSwaps.m_data[index].m_dstContainer = dstContainer;
                 s_itemSwaps.m_data[index].m_dstSlot = dstSlot;
                 s_itemSwaps.m_data[index].m_itemId = bagItem->m_obj->m_entryID;
+                s_itemSwaps.m_data[index].m_item = nullptr;
                 return;
             }
 
-            if (stats->m_bonding == 2 && this->CanUseItem(stats, ignoreBind)) {
+            int32_t error = 0;
+
+            if (stats->m_bonding == 2 && this->CanUseItem(stats, error)) {
                 uint32_t index = FindEmptySwapIndex();
                 s_itemSwaps.m_data[index].m_srcContainer = srcContainer;
                 s_itemSwaps.m_data[index].m_srcSlot = srcSlot;
                 s_itemSwaps.m_data[index].m_dstContainer = dstContainer;
                 s_itemSwaps.m_data[index].m_dstSlot = dstSlot;
                 s_itemSwaps.m_data[index].m_itemId = bagItem->m_obj->m_entryID;
+                s_itemSwaps.m_data[index].m_item = nullptr;
                 FrameScript_SignalEvent(SCRIPT_EVENT_EQUIP_BIND_CONFIRM, "%d", index);
                 return;
             }
@@ -10224,13 +10228,16 @@ void CGPlayer_C::AutoEquipCursorItem(int32_t ignoreBind) {
                 return;
             }
 
-            if (stats->m_bonding == 2 && this->CanUseItem(stats, ignoreBind)) {
+            int32_t error = 0;
+
+            if (stats->m_bonding == 2 && this->CanUseItem(stats, error)) {
                 uint32_t index = FindEmptySwapIndex();
                 s_itemSwaps.m_data[index].m_srcContainer = container;
                 s_itemSwaps.m_data[index].m_srcSlot = slot;
                 s_itemSwaps.m_data[index].m_dstContainer = WOWGUID();
                 s_itemSwaps.m_data[index].m_dstSlot = 0;
                 s_itemSwaps.m_data[index].m_itemId = itemObject->m_obj->m_entryID;
+                s_itemSwaps.m_data[index].m_item = nullptr;
                 FrameScript_SignalEvent(SCRIPT_EVENT_AUTOEQUIP_BIND_CONFIRM, "%d", index);
                 return;
             }
@@ -14531,6 +14538,7 @@ void __stdcall CGPlayer_C::ServerBindConfirm(WOWGUID item, uint64_t srcContainer
     swap->m_dstContainer.m_guid = dstContainer;
     swap->m_dstSlot = dstSlot;
     swap->m_itemId = object->m_obj->m_entryID;
+    swap->m_item = nullptr;
     FrameScript_SignalEvent(SCRIPT_EVENT_AUTOEQUIP_BIND_CONFIRM, "%d", index);
 }
 

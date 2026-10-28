@@ -2009,6 +2009,23 @@ void CCharacterComponent::ComponentUtilAddItemVisual(CM2Model* model, int32_t it
     }
 }
 
+static int32_t CopyComponentPath(char* dest, size_t capacity, const char* folder, const char* name, const char* suffix) {
+    if (!dest || !capacity || !folder || !name) {
+        return 0;
+    }
+
+    suffix = suffix ? suffix : "";
+    size_t need = strlen(folder) + strlen(name) + strlen(suffix);
+
+    if (need + 1 > capacity) {
+        dest[0] = '\0';
+        return 0;
+    }
+
+    SStrPrintf(dest, capacity, "%s%s%s", folder, name, suffix);
+    return 1;
+}
+
 // VERIFY: 7234ffe0 manual
 // OFFSET: 0x004EA9E0
 static void ReplaceParticleColor(int32_t particleColorID, CM2Model* model) {
@@ -2081,7 +2098,7 @@ CM2Model* CCharacterComponent::MakeAmmoModel(CM2Model* model, const ItemDisplayI
 
     const char* modelName = displayRec->m_modelName[1];
 
-    if (!*modelName || !*displayRec->m_modelTexture[1] || (invType != INVTYPE_AMMO && invType != INVTYPE_THROWN)) {
+    if (!model || !modelName || !displayRec->m_modelTexture[1] || !*modelName || !*displayRec->m_modelTexture[1] || (invType != INVTYPE_AMMO && invType != INVTYPE_THROWN)) {
         return nullptr;
     }
 
@@ -2092,12 +2109,11 @@ CM2Model* CCharacterComponent::MakeAmmoModel(CM2Model* model, const ItemDisplayI
     }
 
     char modelPath[260];
-    strcpy(modelPath, folder);
-    strcat(modelPath, modelName);
-
     char texturePath[260];
-    strcpy(texturePath, folder);
-    strcat(texturePath, displayRec->m_modelTexture[1]);
+
+    if (!CopyComponentPath(modelPath, sizeof(modelPath), folder, modelName, nullptr) || !CopyComponentPath(texturePath, sizeof(texturePath), folder, displayRec->m_modelTexture[1], nullptr)) {
+        return nullptr;
+    }
 
     CM2Model* ammoModel = model->m_scene->CreateModel(modelPath, 0);
 
@@ -2158,14 +2174,13 @@ GEOCOMPONENTLINKS CCharacterComponent::AddHandItem(CM2Model* model, const ItemDi
         return ATTACH_NONE;
     }
 
-    strcpy(s_buffer, folder);
-    strcat(s_buffer, displayRec->m_modelName[0]);
-    strcpy(s_pathEnd, s_buffer);
+    if (!displayRec->m_modelName[0] || !displayRec->m_modelTexture[0]) {
+        return ATTACH_NONE;
+    }
 
-    strcpy(s_buffer, folder);
-    strcat(s_buffer, displayRec->m_modelTexture[0]);
-    strcat(s_buffer, ".blp");
-    strcpy(s_pathEnd2, s_buffer);
+    if (!CopyComponentPath(s_path, sizeof(s_path), folder, displayRec->m_modelName[0], nullptr) || !CopyComponentPath(s_path2, sizeof(s_path2), folder, displayRec->m_modelTexture[0], ".blp")) {
+        return ATTACH_NONE;
+    }
 
     CCharacterComponent::AddLink(model, link, s_path, s_path2, itemVisual ? itemVisual : displayRec->m_itemVisual, displayRec);
 
@@ -3848,10 +3863,9 @@ void CCharacterComponent::AddHelm(int32_t itemVisual) {
         return;
     }
 
-    strcpy(s_buffer, "Item\\ObjectComponents\\Head\\");
-    strcat(s_buffer, displayRec->m_modelTexture[0]);
-    strcat(s_buffer, ".blp");
-    strcpy(s_pathEnd2, s_buffer);
+    if (!displayRec->m_modelTexture[0] || !CopyComponentPath(s_path2, sizeof(s_path2), "Item\\ObjectComponents\\Head\\", displayRec->m_modelTexture[0], ".blp")) {
+        return;
+    }
 
     CCharacterComponent::AddLink(this->m_data.m_model, ATTACH_HELM, s_path, s_path2, itemVisual, displayRec);
 
@@ -3946,10 +3960,9 @@ void CCharacterComponent::AddQuiver(int32_t itemVisual) {
         return;
     }
 
-    strcpy(s_buffer, "Item\\ObjectComponents\\Quiver\\");
-    strcat(s_buffer, displayRec->m_modelTexture[0]);
-    strcat(s_buffer, ".blp");
-    strcpy(s_pathEnd2, s_buffer);
+    if (!displayRec->m_modelTexture[0] || !CopyComponentPath(s_path2, sizeof(s_path2), "Item\\ObjectComponents\\Quiver\\", displayRec->m_modelTexture[0], ".blp")) {
+        return;
+    }
 
     this->m_itemSlotForAttachSlot[ATTACH_SHEATH_MAINHAND] = ITEMSLOT_11;
     CCharacterComponent::AddLink(this->m_data.m_model, ATTACH_SHEATH_MAINHAND, s_path, s_path2, itemVisual, displayRec);
@@ -3975,29 +3988,19 @@ int32_t CCharacterComponent::BuildShoulderItemPaths(ItemDisplayInfoRec& rec, con
 
     displayRec = &rec;
 
-    if (*rec.m_modelName[0]) {
-        strcpy(s_buffer, "Item\\ObjectComponents\\Shoulder\\");
-        strcat(s_buffer, displayRec->m_modelName[0]);
-        strcpy(leftModel, s_buffer);
+    if (rec.m_modelName[0] && *rec.m_modelName[0]) {
+        CopyComponentPath(leftModel, 260, "Item\\ObjectComponents\\Shoulder\\", displayRec->m_modelName[0], nullptr);
 
-        if (leftTexture) {
-            strcpy(s_buffer, "Item\\ObjectComponents\\Shoulder\\");
-            strcat(s_buffer, displayRec->m_modelTexture[0]);
-            strcat(s_buffer, ".blp");
-            strcpy(leftTexture, s_buffer);
+        if (leftTexture && displayRec->m_modelTexture[0]) {
+            CopyComponentPath(leftTexture, 260, "Item\\ObjectComponents\\Shoulder\\", displayRec->m_modelTexture[0], ".blp");
         }
     }
 
-    if (*displayRec->m_modelName[1]) {
-        strcpy(s_buffer, "Item\\ObjectComponents\\Shoulder\\");
-        strcat(s_buffer, displayRec->m_modelName[1]);
-        strcpy(rightModel, s_buffer);
+    if (displayRec->m_modelName[1] && *displayRec->m_modelName[1]) {
+        CopyComponentPath(rightModel, 260, "Item\\ObjectComponents\\Shoulder\\", displayRec->m_modelName[1], nullptr);
 
-        if (rightTexture) {
-            strcpy(s_buffer, "Item\\ObjectComponents\\Shoulder\\");
-            strcat(s_buffer, displayRec->m_modelTexture[1]);
-            strcat(s_buffer, ".blp");
-            strcpy(rightTexture, s_buffer);
+        if (rightTexture && displayRec->m_modelTexture[1]) {
+            CopyComponentPath(rightTexture, 260, "Item\\ObjectComponents\\Shoulder\\", displayRec->m_modelTexture[1], ".blp");
         }
     }
 
@@ -5430,14 +5433,13 @@ void CCharacterComponent::AddCape() {
 
     ItemDisplayInfoRec rec;
 
-    if (!g_itemDisplayInfoDB.GetRecord(this->m_itemDisplayID[ITEMSLOT_CAPE], &rec) || !*rec.m_modelTexture[0]) {
+    if (!g_itemDisplayInfoDB.GetRecord(this->m_itemDisplayID[ITEMSLOT_CAPE], &rec) || !rec.m_modelTexture[0] || !*rec.m_modelTexture[0]) {
         return;
     }
 
-    strcpy(s_buffer, "Item\\ObjectComponents\\Cape\\");
-    strcat(s_buffer, rec.m_modelTexture[0]);
-    strcat(s_buffer, ".blp");
-    strcpy(s_pathEnd, s_buffer);
+    if (!CopyComponentPath(s_path, sizeof(s_path), "Item\\ObjectComponents\\Cape\\", rec.m_modelTexture[0], ".blp")) {
+        return;
+    }
 
     CStatus status;
     CTexture* texture = CreateTexture(s_path, &status);

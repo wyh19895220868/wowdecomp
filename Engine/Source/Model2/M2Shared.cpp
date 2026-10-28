@@ -121,7 +121,15 @@ static void MakeAnimFileName(const char* fileName, uint32_t id, uint32_t variati
 // VERIFY: 90b40e33 manual
 // OFFSET: 0x00835A80
 static void MakeSkinFileName(const char* fileName, uint32_t profile, char* result) {
-    strcpy(result, fileName);
+    if (!fileName || !result) {
+        if (result) {
+            result[0] = '\0';
+        }
+
+        return;
+    }
+
+    SStrCopy(result, fileName, 260);
 
     char* extension = strrchr(result, '.');
 
@@ -129,7 +137,24 @@ static void MakeSkinFileName(const char* fileName, uint32_t profile, char* resul
         *extension = '\0';
     }
 
-    sprintf(&result[strlen(result)], "%02d.skin", profile);
+    size_t used = strlen(result);
+
+    if (used + 8 > 260) {
+        result[0] = '\0';
+        return;
+    }
+
+    SStrPrintf(result + used, 260 - used, "%02u.skin", profile);
+}
+
+// A wrapped count * element size used to pass the old check and then
+// relocate a pointer into whatever bytes followed the file.
+static int32_t M2RangeInFile(uint32_t offset, uint32_t count, uint32_t elemSize, uint32_t fileSize) {
+    if (!elemSize || offset > fileSize) {
+        return 0;
+    }
+
+    return count <= (fileSize - offset) / elemSize;
 }
 
 // VERIFY: b5295fba manual
@@ -137,7 +162,7 @@ static void MakeSkinFileName(const char* fileName, uint32_t profile, char* resul
 template <class T>
 int32_t M2Init(uint8_t* base, uint32_t size, const M2Data& data, M2Array<T>& array) {
     if (s_sequenceIndex == 0xFFFFFFFF) {
-        if (array.m_offset > size || array.m_offset + sizeof(T) * array.m_count > size) {
+        if (!M2RangeInFile(array.m_offset, array.m_count, sizeof(T), size)) {
             return 0;
         }
 
@@ -152,7 +177,7 @@ int32_t M2Init(uint8_t* base, uint32_t size, const M2Data& data, M2Array<T>& arr
 template <class T>
 int32_t M2Init(uint8_t* base, uint32_t size, const M2Data& data, M2Array<M2Array<T> >& array) {
     if (s_sequenceIndex == 0xFFFFFFFF) {
-        if (array.m_offset > size || array.m_offset + sizeof(M2Array<T>) * array.m_count > size) {
+        if (!M2RangeInFile(array.m_offset, array.m_count, sizeof(M2Array<T>), size)) {
             return 0;
         }
 
@@ -234,7 +259,7 @@ int32_t M2Init(uint8_t* base, uint32_t size, const M2Data& data, M2Track<T>& tra
 template <>
 int32_t M2Init<M2Sequence>(uint8_t* base, uint32_t size, const M2Data& data, M2Array<M2Sequence>& array) {
     if (s_sequenceIndex == 0xFFFFFFFF) {
-        if (array.m_offset > size || array.m_offset + sizeof(M2Sequence) * array.m_count > size) {
+        if (!M2RangeInFile(array.m_offset, array.m_count, sizeof(M2Sequence), size)) {
             return 0;
         }
 
@@ -690,7 +715,7 @@ void CM2Shared::SubstituteSimpleShaders() {
 template <>
 int32_t M2Init<M2Texture>(uint8_t* base, uint32_t size, const M2Data& data, M2Array<M2Texture>& array) {
     if (s_sequenceIndex == 0xFFFFFFFF) {
-        if (array.m_offset > size || array.m_offset + sizeof(M2Texture) * array.m_count > size) {
+        if (!M2RangeInFile(array.m_offset, array.m_count, sizeof(M2Texture), size)) {
             return 0;
         }
 
@@ -787,7 +812,7 @@ uint32_t CM2Shared::AllocInstances(uint32_t count) {
 template <>
 int32_t M2Init<M2Event>(uint8_t* base, uint32_t size, const M2Data& data, M2Array<M2Event>& array) {
     if (s_sequenceIndex == 0xFFFFFFFF) {
-        if (array.m_offset > size || array.m_offset + sizeof(M2Event) * array.m_count > size) {
+        if (!M2RangeInFile(array.m_offset, array.m_count, sizeof(M2Event), size)) {
             return 0;
         }
 
@@ -1133,10 +1158,20 @@ void CM2Shared::SubstituteSpecializedShaders() {
 int32_t CM2Shared::InitializeSkinProfile() {
     M2SkinProfile* skinData = this->m_skinData;
 
+    if (!skinData) {
+        return 0;
+    }
+
     this->m_maxInstances = skinData->m_indices.m_count ? 0x10000 / skinData->m_indices.m_count : 1;
 
     for (uint32_t i = 0; i < skinData->m_skinSections.m_count; i++) {
-        uint32_t instances = skinData->m_boneCountMax / skinData->m_skinSections[i].m_boneCount;
+        uint32_t bones = skinData->m_skinSections[i].m_boneCount;
+
+        if (!bones) {
+            continue;
+        }
+
+        uint32_t instances = skinData->m_boneCountMax / bones;
 
         if (this->m_maxInstances > instances) {
             this->m_maxInstances = instances;
@@ -1260,7 +1295,7 @@ int32_t CM2Shared::InitializeSkinProfile() {
 template <>
 int32_t M2Init<M2Color>(uint8_t* base, uint32_t size, const M2Data& data, M2Array<M2Color>& array) {
     if (s_sequenceIndex == 0xFFFFFFFF) {
-        if (array.m_offset > size || array.m_offset + sizeof(M2Color) * array.m_count > size) {
+        if (!M2RangeInFile(array.m_offset, array.m_count, sizeof(M2Color), size)) {
             return 0;
         }
 
@@ -1283,7 +1318,7 @@ int32_t M2Init<M2Color>(uint8_t* base, uint32_t size, const M2Data& data, M2Arra
 template <>
 int32_t M2Init<M2TextureWeight>(uint8_t* base, uint32_t size, const M2Data& data, M2Array<M2TextureWeight>& array) {
     if (s_sequenceIndex == 0xFFFFFFFF) {
-        if (array.m_offset > size || array.m_offset + sizeof(M2TextureWeight) * array.m_count > size) {
+        if (!M2RangeInFile(array.m_offset, array.m_count, sizeof(M2TextureWeight), size)) {
             return 0;
         }
 
@@ -1336,7 +1371,7 @@ int32_t CM2Shared::FinishLoadingSkinProfile(uint32_t size) {
 template <>
 int32_t M2Init<M2CompBone>(uint8_t* base, uint32_t size, const M2Data& data, M2Array<M2CompBone>& array) {
     if (s_sequenceIndex == 0xFFFFFFFF) {
-        if (array.m_offset > size || array.m_offset + sizeof(M2CompBone) * array.m_count > size) {
+        if (!M2RangeInFile(array.m_offset, array.m_count, sizeof(M2CompBone), size)) {
             return 0;
         }
 
@@ -1359,7 +1394,7 @@ int32_t M2Init<M2CompBone>(uint8_t* base, uint32_t size, const M2Data& data, M2A
 template <>
 int32_t M2Init<M2TextureTransform>(uint8_t* base, uint32_t size, const M2Data& data, M2Array<M2TextureTransform>& array) {
     if (s_sequenceIndex == 0xFFFFFFFF) {
-        if (array.m_offset > size || array.m_offset + sizeof(M2TextureTransform) * array.m_count > size) {
+        if (!M2RangeInFile(array.m_offset, array.m_count, sizeof(M2TextureTransform), size)) {
             return 0;
         }
 
@@ -1382,7 +1417,7 @@ int32_t M2Init<M2TextureTransform>(uint8_t* base, uint32_t size, const M2Data& d
 template <>
 int32_t M2Init<M2Attachment>(uint8_t* base, uint32_t size, const M2Data& data, M2Array<M2Attachment>& array) {
     if (s_sequenceIndex == 0xFFFFFFFF) {
-        if (array.m_offset > size || array.m_offset + sizeof(M2Attachment) * array.m_count > size) {
+        if (!M2RangeInFile(array.m_offset, array.m_count, sizeof(M2Attachment), size)) {
             return 0;
         }
 
@@ -1403,7 +1438,7 @@ int32_t M2Init<M2Attachment>(uint8_t* base, uint32_t size, const M2Data& data, M
 template <>
 int32_t M2Init<M2Light>(uint8_t* base, uint32_t size, const M2Data& data, M2Array<M2Light>& array) {
     if (s_sequenceIndex == 0xFFFFFFFF) {
-        if (array.m_offset > size || array.m_offset + sizeof(M2Light) * array.m_count > size) {
+        if (!M2RangeInFile(array.m_offset, array.m_count, sizeof(M2Light), size)) {
             return 0;
         }
 
@@ -1426,7 +1461,7 @@ int32_t M2Init<M2Light>(uint8_t* base, uint32_t size, const M2Data& data, M2Arra
 template <>
 int32_t M2Init<M2Camera>(uint8_t* base, uint32_t size, const M2Data& data, M2Array<M2Camera>& array) {
     if (s_sequenceIndex == 0xFFFFFFFF) {
-        if (array.m_offset > size || array.m_offset + sizeof(M2Camera) * array.m_count > size) {
+        if (!M2RangeInFile(array.m_offset, array.m_count, sizeof(M2Camera), size)) {
             return 0;
         }
 
@@ -1449,7 +1484,7 @@ int32_t M2Init<M2Camera>(uint8_t* base, uint32_t size, const M2Data& data, M2Arr
 template <>
 int32_t M2Init<M2Ribbon>(uint8_t* base, uint32_t size, const M2Data& data, M2Array<M2Ribbon>& array) {
     if (s_sequenceIndex == 0xFFFFFFFF) {
-        if (array.m_offset > size || array.m_offset + sizeof(M2Ribbon) * array.m_count > size) {
+        if (!M2RangeInFile(array.m_offset, array.m_count, sizeof(M2Ribbon), size)) {
             return 0;
         }
 
@@ -1477,7 +1512,7 @@ int32_t M2Init(uint8_t* base, uint32_t size, const M2Data& data, M2Particle& par
 template <>
 int32_t M2Init<M2Particle>(uint8_t* base, uint32_t size, const M2Data& data, M2Array<M2Particle>& array) {
     if (s_sequenceIndex == 0xFFFFFFFF) {
-        if (array.m_offset > size || array.m_offset + sizeof(M2Particle) * array.m_count > size) {
+        if (!M2RangeInFile(array.m_offset, array.m_count, sizeof(M2Particle), size)) {
             return 0;
         }
 
@@ -1642,8 +1677,21 @@ int32_t CM2Shared::LoadSkinProfile(uint32_t profile) {
 
 // INLINED
 uint32_t CM2Shared::GetSkinProfileIndex(uint32_t maxBones) {
-    for (uint32_t i = 0; i < this->m_data->m_numSkinProfiles; i++) {
-        if (s_skinProfileBoneCounts[4 - this->m_data->m_numSkinProfiles + i] <= maxBones) {
+    uint32_t count = this->m_data ? this->m_data->m_numSkinProfiles : 0;
+
+    if (!count) {
+        return 0xFFFFFFFF;
+    }
+
+    // The bone-limit table only describes the classic four profiles.
+    // HD patches add more skins; indexing off the end either crashes or
+    // rejects every profile, so the whole model never appears.
+    if (count > 4) {
+        return 0;
+    }
+
+    for (uint32_t i = 0; i < count; i++) {
+        if (s_skinProfileBoneCounts[4 - count + i] <= maxBones) {
             return i;
         }
     }

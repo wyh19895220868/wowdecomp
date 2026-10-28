@@ -20,6 +20,7 @@ class CBLPFile {
     /* 04A8 */ uint32_t m_colorMapping;
     /* 04AC */ MipMapAlgorithm m_mipMapAlgorithm;
     /* 04B0 */ uint8_t* m_lockDecompMem;
+    /* 04B8 */ uint32_t m_imageBytes;
 
     static int32_t ValidateHeader(const BLPHeader& header);
 
@@ -37,9 +38,10 @@ class CBLPFile {
     int32_t LockChain2(const char* fileName, PIXEL_FORMAT format, MipBits*& images, uint32_t mipLevel, int32_t inPlace);
     int32_t Open(const char* fileName, int32_t flags);
     uint32_t Pixels(uint32_t mipLevel) const;
-    int32_t Source(void* data);
+    int32_t Source(void* data, uint32_t size);
     int32_t Unlock(uint32_t mipLevel);
     uint32_t Width(uint32_t mipLevel) const;
+    uint8_t* MipBytes(uint32_t mipLevel) const;
 
     protected:
     void DecompPalARGB1555DitherFloydSteinberg(uint8_t* out, const void* in, uint32_t width, uint32_t height);

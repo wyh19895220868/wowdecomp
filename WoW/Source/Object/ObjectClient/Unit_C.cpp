@@ -21736,9 +21736,9 @@ CM2Model* CGUnit_C::CreateItemModel(uint32_t displayId, uint32_t inventoryType, 
 
     uint32_t index;
 
-    if (*rec.m_modelName[0]) {
+    if (rec.m_modelName[0] && *rec.m_modelName[0]) {
         index = 0;
-    } else if (*rec.m_modelName[1]) {
+    } else if (rec.m_modelName[1] && *rec.m_modelName[1]) {
         index = 1;
     } else {
         return nullptr;
@@ -21765,7 +21765,7 @@ CM2Model* CGUnit_C::CreateItemModel(uint32_t displayId, uint32_t inventoryType, 
         return nullptr;
     }
 
-    if (*rec.m_modelTexture[index]) {
+    if (rec.m_modelTexture[index] && *rec.m_modelTexture[index]) {
         SStrPrintf(fileName, sizeof(fileName), "%s%s", path, rec.m_modelTexture[index]);
         CStatus status;
         CTexture* texture = CreateTexture(fileName, &status);
