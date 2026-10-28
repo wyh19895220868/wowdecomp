@@ -247,21 +247,14 @@ local function setAmountText(label, current, maximum, compact)
     setLabelText(label, label.nativeAmount)
 end
 
-local function targetHealth()
-    if not Dream_GetCreGuidLow or not DreamCustomTargetHealthData then return nil, nil, false, false end
-    local data, pending
-    if Dream_GetCustomTargetHealth then
-        data, pending = Dream_GetCustomTargetHealth()
-    else
-        data = DreamCustomTargetHealthData[Dream_GetCreGuidLow()]
-    end
-    if not data or (tonumber(data.MaxMultipleHp) or 1) <= 1 then return nil, nil, pending, false end
-    -- The addon retains exact totals even when 900京 * 20 exceeds int64.
-    local current, maximum = string.match(data.TotalHealthText or "", "^(%d+)/(%d+)$")
-    if current and maximum then return current, maximum, false, true end
-    -- A multi-bar packet without exact totals is not ready. Do not fall back
-    -- to the per-bar native projection while this target is incomplete.
-    return nil, nil, true, true
+local function nativeTargetHealth(current, maximum)
+    if not current or not maximum then return nil, nil, false end
+
+    -- The server marks the aggregate native snapshot with the number of bars.
+    -- The multi-bar addon keeps its own query and UI; the target frame never
+    -- waits for or reads that addon state.
+    local bars = tonumber(value("target", "HEALTH_BARS") or "1") or 1
+    return current, maximum, bars > 1
 end
 
 local function updateBar(bar, unit, resource)
@@ -276,14 +269,15 @@ local function updateBar(bar, unit, resource)
     local targetDisplayMaximum
     local targetHasMultipleHealth = false
     if unit == "target" and resource == "HEALTH" then
-        local totalCurrent, totalMaximum, pending, isMultiple = targetHealth()
-        if totalCurrent and totalMaximum then
-            current, maximum = totalCurrent, totalMaximum
-            targetDisplayMaximum = totalMaximum
+        local nativeCurrent, nativeMaximum, isMultiple = nativeTargetHealth(current, maximum)
+        if nativeCurrent and nativeMaximum then
+            current, maximum = nativeCurrent, nativeMaximum
+            targetDisplayMaximum = nativeMaximum
             targetHasMultipleHealth = isMultiple
-        elseif pending then
-            -- An int32 compatibility projection can be small (e.g. 42) even
-            -- when actual health is 900京. Never infer readiness from its size.
+        else
+            -- The compatibility UNIT_FIELD_HEALTH value may already be 42,
+            -- but it is not an authoritative native snapshot. Keep the label
+            -- blank until the server supplies the target's native values.
             current, maximum = nil, nil
         end
     end

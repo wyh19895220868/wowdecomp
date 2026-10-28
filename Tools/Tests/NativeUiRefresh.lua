@@ -58,32 +58,51 @@ for i = 1, 100 do Tick(0.1) end
 print("unchanged values across 100 ticks: bar writes=" .. metrics.values)
 assert(metrics.values == 0, "unchanged health rewrites every bar on every poll")
 
--- A target can have its INT256 per-bar snapshot before the multi-bar query.
+-- A target can have its compatibility fields before the aggregate native snapshot.
+-- The plugin query is intentionally stale here: the avatar frame must ignore it.
 local targetQueryData, targetQueryPending = nil, true
+local targetQueryReads = 0
 Dream_GetCreGuidLow = function() return 299 end
 DreamCustomTargetHealthData = {}
 function Dream_GetCustomTargetHealth()
+    targetQueryReads = targetQueryReads + 1
     return targetQueryData, targetQueryPending
 end
+local nativeTargetCurrent, nativeTargetMaximum, nativeTargetBars
 function NativeUnitValue(unit, key)
     if unit ~= "target" then return readValue(unit, key) end
     if key == "INT256" then return "1" end
-    if key == "CUR_HEALTH" or key == "MAX_HEALTH" then return "42" end
+    if key == "CUR_HEALTH" then return nativeTargetCurrent end
+    if key == "MAX_HEALTH" then return nativeTargetMaximum end
+    if key == "HEALTH_BARS" then return nativeTargetBars end
 end
 stock:SetText("42"); stock:Show()
 hooks.TargetFrame_Update()
 assert(TargetFrameHealthBar.nativeHealthRight:GetText() == "",
-    "INT256 snapshot exposes 42 while the selected target query is pending")
-assert(not stock:IsShown(), "pending multi-bar query leaves the stock projection visible")
+    "compatibility target value is visible before the aggregate native snapshot")
+assert(not stock:IsShown(), "pending native snapshot leaves the stock projection visible")
+assert(targetQueryReads == 0, "native target frame called the multi-bar plugin query")
 
-targetQueryData = { MaxMultipleHp = 5, TotalHealthText = "2500000000/12500000000" }
+nativeTargetCurrent, nativeTargetMaximum, nativeTargetBars = "2500000000", "12500000000", "5"
+targetQueryData = { MaxMultipleHp = 5, TotalHealthText = "999/999" }
 targetQueryPending = false
 hooks.TargetFrame_Update()
 assert(TargetFrameHealthBar.nativeHealthRight:GetText() == "25亿/125亿",
-    "multi-bar query did not replace the per-bar snapshot with 25亿/125亿")
+    "native aggregate snapshot did not render 25亿/125亿")
+targetQueryData = nil
+targetQueryPending = true
+hooks.TargetFrame_Update()
+assert(TargetFrameHealthBar.nativeHealthRight:GetText() == "25亿/125亿",
+    "native target frame incorrectly waited for the multi-bar plugin query")
 stock:SetText("42"); stock:Show()
 hooks.UnitFrameHealthBar_Update(TargetFrameHealthBar)
 assert(not stock:IsShown() and TargetFrameHealthBar.nativeHealthRight:GetText() == "25亿/125亿",
-    "stock redraw replaced the complete multi-bar health with 42")
-print("Target INT256 42 -> multi-bar 25亿/125亿 readiness regression passed")
+    "stock redraw replaced the native aggregate health with 42")
+print("Target compatibility 42 -> native aggregate 25亿/125亿 regression passed")
+nativeTargetCurrent, nativeTargetMaximum, nativeTargetBars = "45000000000", "90000000000", "1"
+hooks.TargetFrame_Update()
+assert(TargetFrameHealthBar.nativeHealthRight:GetText() == "450亿",
+    "single-bar native target unexpectedly displays a health denominator")
+assert(targetQueryReads == 0, "single-bar target refresh called the multi-bar plugin query")
+print("Single-bar native target formatting regression passed")
 print("Native UI refresh regression passed")
