@@ -952,6 +952,30 @@ void CVehiclePassenger_C::ExecutePendingRescueTransitions() {
 // STATIC: 0x00A2D3F0
 static const uint32_t s_seatAttachments[22] = { 20, 34, 19, 21, 22, 17, 23, 24, 25, 15, 16, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 0 };
 
+static uint32_t SeatAttachmentIndex(int32_t attachmentId) {
+    return static_cast<uint32_t>(attachmentId) >= 22 ? 0xFFFFFFFF : s_seatAttachments[attachmentId];
+}
+
+static CM2Model* SeatParentModel(CGUnit_C* unit, uint32_t attachment) {
+    if (!unit) {
+        return nullptr;
+    }
+
+    CM2Model* mount = unit->m_mountModel;
+
+    if (mount && mount->IsLoaded(0, 0) && (attachment == 0xFFFFFFFF || mount->HasAttachment(attachment))) {
+        return mount;
+    }
+
+    CM2Model* body = unit->GetObjectModel();
+
+    if (body && body->IsLoaded(0, 0)) {
+        return body;
+    }
+
+    return nullptr;
+}
+
 // VERIFY: aa11b3c6 auto
 // OFFSET: 0x00716450
 int32_t CVehiclePassenger_C::IsInTransitionMotion() const {
@@ -1877,10 +1901,10 @@ void CVehiclePassenger_C::UpdateModel() {
             this->ComputeSeatOffset(seatRec, model);
         }
 
-        CM2Model* vehicleModel = vehicle->GetObjectModel();
+        attachment = SeatAttachmentIndex(seatRec->m_attachmentID);
+        CM2Model* vehicleModel = SeatParentModel(vehicle, attachment);
 
-        if (vehicleModel && vehicleModel->IsLoaded(0, 0)) {
-            attachment = static_cast<uint32_t>(seatRec->m_attachmentID) >= 22 ? 0xFFFFFFFF : s_seatAttachments[seatRec->m_attachmentID];
+        if (vehicleModel) {
             this->ComputeModelTransform(matrix, vehicleModel, vehicle, seatRec, attachment, this->m_unit->m_smoothTarget.m_value);
             parent = vehicleModel;
             useMatrix = 1;
@@ -1901,8 +1925,7 @@ void CVehiclePassenger_C::UpdateModel() {
         VehicleSeatRec* oldSeat;
         CM2Model* oldModel;
 
-        if (this->m_vehicleGuid && (oldVehicle = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(this->m_vehicleGuid, TYPE_UNIT, __FILE__, __LINE__))) != nullptr && ((oldSeat = oldVehicle->GetVehicleSeatRec(this->m_seat)), (oldModel = oldVehicle->GetObjectModel()), oldSeat) && oldSeat->m_attachmentID >= 0 && oldModel && oldModel->IsLoaded(0, 0)) {
-            attachment = static_cast<uint32_t>(seatRec->m_attachmentID) >= 22 ? 0xFFFFFFFF : s_seatAttachments[oldSeat->m_attachmentID];
+        if (this->m_vehicleGuid && (oldVehicle = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(this->m_vehicleGuid, TYPE_UNIT, __FILE__, __LINE__))) != nullptr && ((oldSeat = oldVehicle->GetVehicleSeatRec(this->m_seat)), oldSeat) && oldSeat->m_attachmentID >= 0 && (attachment = SeatAttachmentIndex(oldSeat->m_attachmentID), oldModel = SeatParentModel(oldVehicle, attachment)) != nullptr) {
             this->ComputeModelTransform(matrix, oldModel, vehicle, oldSeat, attachment, this->m_startTargetFacing);
             parent = oldModel;
             useMatrix = 1;
