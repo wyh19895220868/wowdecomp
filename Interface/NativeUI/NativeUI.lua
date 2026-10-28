@@ -340,16 +340,25 @@ end
 NativeUI_RefreshTargetHealth = refreshTarget
 if TargetFrame_Update then hooksecurefunc("TargetFrame_Update", refreshTarget) end
 
+local function displayStat(key, text)
+    if key == "ATTACK_POWER" or key == "RANGED_ATTACK_POWER" then
+        local sign, whole = string.match(tostring(text), "^(%-?)(%d+)%.%d+$")
+        if whole then text = sign .. whole end
+    end
+    return formatAmount(text)
+end
 local function setStat(frame, unit, key)
     if not frame then return end
     local text = value(unit or "player", key)
     if not text then return end
+    local shown = displayStat(key, text)
     local name = frame:GetName()
-    local label = frame.Value or (name and _G[name .. "StatText"])
-    if label then label:SetText(formatAmount(text)) end
+    if frame.Value then frame.Value:SetText(shown) end
+    local statText = name and _G[name .. "StatText"]
+    if statText and statText ~= frame.Value then statText:SetText(shown) end
     frame.nativeUnit, frame.nativeKey = unit or "player", key
     local title = name and _G[name .. "Label"]
-    frame.tooltip = (title and title:GetText() or "") .. " " .. text
+    frame.tooltip = (title and title:GetText() or "") .. " " .. shown
     frame.tooltip2 = nil
 end
 local statNames = {"STRENGTH", "AGILITY", "STAMINA", "INTELLECT", "SPIRIT"}
