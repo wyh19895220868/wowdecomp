@@ -863,6 +863,8 @@ void CGTalentGroup_C::AddPreviewTalentPoints(uint32_t tabIndex, const TalentRec*
     if (!item) {
         item = this->m_items.New(talentId, key, 0, 0);
         item->m_talentId = talentId;
+        item->m_rank = -1;
+        item->m_previewRank = -1;
         this->m_tabs.m_data[tabIndex].AddItem(talent, item);
     }
 

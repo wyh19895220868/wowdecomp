@@ -6871,6 +6871,7 @@ void CGTooltip::SetTalent(const TalentRec* talent, CGTalentGroup_C* group, int32
 
     if (useRank && rank >= 0 && rank <= maxRank) {
         currentRank = rank;
+        displayRank = rank;
     } else if (group) {
         TalentGroupItem_C* item = group->GetTalentItem(talent->m_id);
 
