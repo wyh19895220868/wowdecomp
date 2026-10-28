@@ -266,7 +266,10 @@ local function updateBar(bar, unit, resource)
     if not name then return end
     hideLegacyNativeOverlay(bar, name)
     local current, maximum = value(unit, "CUR_" .. resource), value(unit, "MAX_" .. resource)
-    if unit == "target" and resource == "HEALTH" and not value(unit, "INT256") then
+    -- INT256 only marks a cached per-bar snapshot; it does not mean the
+    -- selected target's multi-bar query is ready. Never let that projection
+    -- flash before the authoritative target data arrives.
+    if unit == "target" and resource == "HEALTH" then
         local totalCurrent, totalMaximum, pending = targetHealth()
         if totalCurrent and totalMaximum then
             current, maximum = totalCurrent, totalMaximum

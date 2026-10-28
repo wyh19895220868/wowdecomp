@@ -57,4 +57,33 @@ metrics.values = 0
 for i = 1, 100 do Tick(0.1) end
 print("unchanged values across 100 ticks: bar writes=" .. metrics.values)
 assert(metrics.values == 0, "unchanged health rewrites every bar on every poll")
+
+-- A target can have its INT256 per-bar snapshot before the multi-bar query.
+local targetQueryData, targetQueryPending = nil, true
+Dream_GetCreGuidLow = function() return 299 end
+DreamCustomTargetHealthData = {}
+function Dream_GetCustomTargetHealth()
+    return targetQueryData, targetQueryPending
+end
+function NativeUnitValue(unit, key)
+    if unit ~= "target" then return readValue(unit, key) end
+    if key == "INT256" then return "1" end
+    if key == "CUR_HEALTH" or key == "MAX_HEALTH" then return "42" end
+end
+stock:SetText("42"); stock:Show()
+hooks.TargetFrame_Update()
+assert(TargetFrameHealthBar.nativeHealthRight:GetText() == "",
+    "INT256 snapshot exposes 42 while the selected target query is pending")
+assert(not stock:IsShown(), "pending multi-bar query leaves the stock projection visible")
+
+targetQueryData = { MaxMultipleHp = 5, TotalHealthText = "2500000000/2500000000" }
+targetQueryPending = false
+hooks.TargetFrame_Update()
+assert(TargetFrameHealthBar.nativeHealthRight:GetText() == "25亿",
+    "multi-bar query did not replace the per-bar snapshot with 25亿")
+stock:SetText("42"); stock:Show()
+hooks.UnitFrameHealthBar_Update(TargetFrameHealthBar)
+assert(not stock:IsShown() and TargetFrameHealthBar.nativeHealthRight:GetText() == "25亿",
+    "stock redraw replaced the complete multi-bar health with 42")
+print("Target INT256 42 -> multi-bar 25亿 readiness regression passed")
 print("Native UI refresh regression passed")
