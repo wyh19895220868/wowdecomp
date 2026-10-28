@@ -691,21 +691,29 @@ void DBCache<T, TKey, THashKey>::Idle() {
         return;
     }
 
-    if (this->m_nextQueryTime && static_cast<int32_t>(OsGetAsyncTimeMs() - this->m_nextQueryTime) < 0) {
+    uint32_t now = OsGetAsyncTimeMs();
+    int32_t windowElapsed = !this->m_nextQueryTime || static_cast<int32_t>(now - this->m_nextQueryTime) >= 0;
+
+    if (!windowElapsed && this->QueryLimitReached()) {
         return;
     }
 
-    this->m_queriesSent = 0;
-    this->m_nextQueryTime = OsGetAsyncTimeMs() + 30000;
+    if (this->m_nextQueryTime && windowElapsed) {
+        this->m_queriesSent = 0;
+        this->m_nextQueryTime = 0;
+    }
 
-    DBCACHEHASH* next;
+    uint32_t budget = 32;
 
-    for (DBCACHEHASH* hash = this->m_pending.Head(); !this->m_pending.IsEnd(hash); hash = next) {
-        next = this->m_pending.RawNext(hash);
+    for (DBCACHEHASH* hash = this->m_pending.Head(); budget && !this->m_pending.IsEnd(hash); ) {
+        DBCACHEHASH* next = this->m_pending.RawNext(hash);
         this->m_pending.UnlinkNode(hash);
         this->SendSingleQuery(hash);
+        budget--;
+        hash = next;
 
         if (this->QueryLimitReached()) {
+            this->m_nextQueryTime = now + 30000;
             break;
         }
     }
