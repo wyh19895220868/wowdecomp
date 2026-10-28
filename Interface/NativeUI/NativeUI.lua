@@ -238,26 +238,30 @@ end
 
 -- Cache formatting only. Stock updates can still change the bar's range/fill
 -- or reveal their own text, so those repairs must run even for unchanged health.
-local function setAmountText(label, current, maximum)
-    if label.nativeCurrent ~= current or label.nativeMaximum ~= maximum then
-        label.nativeCurrent, label.nativeMaximum = current, maximum
+local function setAmountText(label, current, maximum, compact)
+    if label.nativeCurrent ~= current or label.nativeMaximum ~= maximum or label.nativeCompact ~= compact then
+        label.nativeCurrent, label.nativeMaximum, label.nativeCompact = current, maximum, compact
         label.nativeAmount = formatAmount(current)
-        if maximum then label.nativeAmount = label.nativeAmount .. " / " .. formatAmount(maximum) end
+        if maximum then label.nativeAmount = label.nativeAmount .. (compact and "/" or " / ") .. formatAmount(maximum) end
     end
     setLabelText(label, label.nativeAmount)
 end
 
 local function targetHealth()
-    if not Dream_GetCreGuidLow or not DreamCustomTargetHealthData then return end
+    if not Dream_GetCreGuidLow or not DreamCustomTargetHealthData then return nil, nil, false, false end
     local data, pending
     if Dream_GetCustomTargetHealth then
         data, pending = Dream_GetCustomTargetHealth()
     else
         data = DreamCustomTargetHealthData[Dream_GetCreGuidLow()]
     end
-    if not data or (tonumber(data.MaxMultipleHp) or 1) <= 1 then return nil, nil, pending end
+    if not data or (tonumber(data.MaxMultipleHp) or 1) <= 1 then return nil, nil, pending, false end
     -- The addon retains exact totals even when 900京 * 20 exceeds int64.
-    return string.match(data.TotalHealthText or "", "^(%d+)/(%d+)$")
+    local current, maximum = string.match(data.TotalHealthText or "", "^(%d+)/(%d+)$")
+    if current and maximum then return current, maximum, false, true end
+    -- A multi-bar packet without exact totals is not ready. Do not fall back
+    -- to the per-bar native projection while this target is incomplete.
+    return nil, nil, true, true
 end
 
 local function updateBar(bar, unit, resource)
@@ -269,10 +273,14 @@ local function updateBar(bar, unit, resource)
     -- INT256 only marks a cached per-bar snapshot; it does not mean the
     -- selected target's multi-bar query is ready. Never let that projection
     -- flash before the authoritative target data arrives.
+    local targetDisplayMaximum
+    local targetHasMultipleHealth = false
     if unit == "target" and resource == "HEALTH" then
-        local totalCurrent, totalMaximum, pending = targetHealth()
+        local totalCurrent, totalMaximum, pending, isMultiple = targetHealth()
         if totalCurrent and totalMaximum then
             current, maximum = totalCurrent, totalMaximum
+            targetDisplayMaximum = totalMaximum
+            targetHasMultipleHealth = isMultiple
         elseif pending then
             -- An int32 compatibility projection can be small (e.g. 42) even
             -- when actual health is 900京. Never infer readiness from its size.
@@ -305,7 +313,7 @@ local function updateBar(bar, unit, resource)
         local percent = math.floor(fraction * 100 + 0.5)
         if fraction > 0 then percent = math.max(1, percent) end
         setLabelText(left, tostring(percent) .. "%")
-        setAmountText(right, current)
+        setAmountText(right, current, targetHasMultipleHealth and targetDisplayMaximum or nil, targetHasMultipleHealth)
         hideStockBarText(bar, name, left, right)
         left:Show()
         right:Show()

@@ -76,14 +76,14 @@ assert(TargetFrameHealthBar.nativeHealthRight:GetText() == "",
     "INT256 snapshot exposes 42 while the selected target query is pending")
 assert(not stock:IsShown(), "pending multi-bar query leaves the stock projection visible")
 
-targetQueryData = { MaxMultipleHp = 5, TotalHealthText = "2500000000/2500000000" }
+targetQueryData = { MaxMultipleHp = 5, TotalHealthText = "2500000000/12500000000" }
 targetQueryPending = false
 hooks.TargetFrame_Update()
-assert(TargetFrameHealthBar.nativeHealthRight:GetText() == "25亿",
-    "multi-bar query did not replace the per-bar snapshot with 25亿")
+assert(TargetFrameHealthBar.nativeHealthRight:GetText() == "25亿/125亿",
+    "multi-bar query did not replace the per-bar snapshot with 25亿/125亿")
 stock:SetText("42"); stock:Show()
 hooks.UnitFrameHealthBar_Update(TargetFrameHealthBar)
-assert(not stock:IsShown() and TargetFrameHealthBar.nativeHealthRight:GetText() == "25亿",
+assert(not stock:IsShown() and TargetFrameHealthBar.nativeHealthRight:GetText() == "25亿/125亿",
     "stock redraw replaced the complete multi-bar health with 42")
-print("Target INT256 42 -> multi-bar 25亿 readiness regression passed")
+print("Target INT256 42 -> multi-bar 25亿/125亿 readiness regression passed")
 print("Native UI refresh regression passed")
