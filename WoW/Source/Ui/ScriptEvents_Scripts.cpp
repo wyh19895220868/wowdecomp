@@ -2566,7 +2566,14 @@ static int32_t Script_UnitLevel(lua_State* L) {
 
     if (unit) {
         CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPE_PLAYER, __FILE__, __LINE__));
-        level = unit->m_unit->m_unitFieldLevel;
+        uint32_t fieldLevel = unit->m_unit->m_unitFieldLevel;
+        CGPartyMemberState* partyState = CGPartyMemberStateRepository::GetState(guid);
+
+        if (partyState && (fieldLevel == 0 || fieldLevel > 255)) {
+            fieldLevel = partyState->m_level;
+        }
+
+        level = static_cast<int32_t>(fieldLevel);
 
         if ((player && unit->UnitReaction(player) <= UNIT_REACTION_HOSTILE && static_cast<int32_t>(player->m_unit->m_unitFieldLevel) <= static_cast<int32_t>(unit->m_unit->m_unitFieldLevel) - 10) || unit->IsBossMob()) {
             level = -1;
