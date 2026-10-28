@@ -926,7 +926,6 @@ local function Dream_BuildAllModuleTooltipText(ModuleData)
 	Out = Dream_AddModuleSection(Out, "追加属性", Dream_BuildCompactAttributeModuleLines(ModuleData.AdditionalAttributes, HuanjingMultiplierSuffix));
 	Out = Dream_AddModuleSection(Out, "追加技能", Dream_BuildSkillModuleLines(ModuleData.SkillsData));
 	Out = Dream_AddModuleSection(Out, "追加套装", Dream_BuildSetModuleLines(ModuleData.SetData));
-	Out = Dream_AddModuleSection(Out, "追加符文", Dream_BuildRuneModuleLines(ModuleData.RuneData));
 	Out = Dream_AddModuleSection(Out, "追加强化", Dream_BuildEnhancementModuleLines(ModuleData.EnhancementData));
 	Out = Dream_AddModuleSection(Out, "追加成长", Dream_BuildGrowthModuleLines(ModuleData.GrowthData));
 
@@ -2539,153 +2538,8 @@ local function Dream_BuildRuneCombinationText(RuneData)
 end
 
 local function Dream_ShowRuneTooltipTextures(Self, GuidLow)
-	if (not Self or not Self.GetName or not GuidLow or GuidLow <= 0) then
-		return;
-	end
-
-	local RuneData = Zs_GuidLowStoreData.AtRunesData[GuidLow];
-	local MaxCount = RuneData and (tonumber(RuneData.MaxCount) or 0) or 0;
-	if (MaxCount <= 0) then
-		return;
-	end
-	if (MaxCount > RunesCount) then
-		MaxCount = RunesCount;
-	end
-
-	local AnchorLine = nil;
-	local AnchorIndex = nil;
-	local FallbackLine = nil;
-	local FallbackIndex = nil;
-	for LineIndex = 1, Self:NumLines() do
-		local Line = _G[Self:GetName() .. "TextLeft" .. LineIndex];
-		local LineText = Line and Line:GetText();
-		if (LineText and Dream_IsOfficialBasePropertyLine(LineText)) then
-			FallbackLine = Line;
-			FallbackIndex = LineIndex;
-		end
-		if (LineText and string.find(LineText, CheckStr)) then
-			AnchorLine = Line;
-			AnchorIndex = LineIndex;
-			break
-		end
-	end
-	if (not AnchorLine) then
-		AnchorLine = FallbackLine or _G[Self:GetName() .. "TextLeft2"] or _G[Self:GetName() .. "TextLeft1"];
-		AnchorIndex = FallbackIndex or ((AnchorLine == _G[Self:GetName() .. "TextLeft2"]) and 2 or 1);
-	end
-	if (not AnchorLine) then
-		return;
-	end
-
-	-- 组合名称和效果放在符文孔下方、原绿色属性上方。
-	local CombinationLine = AnchorIndex and _G[Self:GetName() .. "TextLeft" .. (AnchorIndex + 1)] or nil;
-	local CombinationKey = tostring(GuidLow) .. ":" .. tostring(RuneData.GName) .. ":" .. tostring(RuneData.GListStore);
-	local ExistingCombination = false;
-	if (RuneData.GName and RuneData.GName ~= "") then
-		for ExistingIndex = 1, Self:NumLines() do
-			local ExistingLine = _G[Self:GetName() .. "TextLeft" .. ExistingIndex];
-			local ExistingText = ExistingLine and ExistingLine:GetText() or "";
-			if (string.find(ExistingText, tostring(RuneData.GName), 1, true)) then
-				ExistingCombination = true;
-				break;
-			end
-		end
-	end
-	if (ExistingCombination) then
-		Self.Dream_RuneCombinationKey = CombinationKey;
-	end
-	if (Self.Dream_RuneCombinationKey ~= CombinationKey and CombinationLine and CombinationLine:GetText()) then
-		local CombinationText = Dream_BuildRuneCombinationText(RuneData);
-		local OriginalText = CombinationLine:GetText();
-		-- OnTooltipSetItem may reset the native line while preserving the addon
-		-- text. Recognize an already inserted combination before prepending it;
-		-- this prevents FrozenCore callbacks from making the rune skill blink.
-		if (CombinationText ~= "" and string.find(OriginalText, tostring(RuneData.GName or ""), 1, true)) then
-			Self.Dream_RuneCombinationKey = CombinationKey;
-		elseif (CombinationText ~= "") then
-			CombinationLine:SetText(CombinationText .. "\n" .. OriginalText);
-			Self.Dream_RuneCombinationKey = CombinationKey;
-		end
-	end
-
-	-- 符文孔恢复到需求等级正下方。
-	local RuneAnchorLine = AnchorLine;
-	local RuneAnchorIndex = AnchorIndex;
-
-	Dream_SetStableTooltipWidth(Self, TipWidth);
-	if (CombinationLine) then
-		CombinationLine:SetWidth(TipWidth - 20);
-	end
-	local AfterRuneLine = RuneAnchorIndex and _G[Self:GetName() .. "TextLeft" .. (RuneAnchorIndex + 1)] or nil;
-	if (AfterRuneLine and AfterRuneLine:GetText()) then
-		local AfterRuneText = AfterRuneLine:GetText();
-		if (string.sub(AfterRuneText, 1, 5) ~= "\n\n\n\n\n") then
-			AfterRuneLine:SetText(string.rep("\n", 5) .. AfterRuneText);
-		end
-		AfterRuneLine:SetWidth(Self:GetWidth());
-	end
-
-	-- 从提示框左边框内侧开始排列。
-	local SlotGap = 6;
-	local StartX = 8;
-	local TooltipLeft = Self.GetLeft and Self:GetLeft() or nil;
-	local AnchorLeft = RuneAnchorLine.GetLeft and RuneAnchorLine:GetLeft() or nil;
-	local AnchorStartX = StartX;
-	if (TooltipLeft and AnchorLeft) then
-		AnchorStartX = StartX - (AnchorLeft - TooltipLeft);
-	end
-
-	local RuneItems = Dream_Split(RuneData.ItemStore or "", "#");
-	for Index = 1, MaxCount do
-		local AtTexture = _G[Self:GetName() .. "Textures" .. Index];
-		if (AtTexture) then
-			local RuneItemId = tonumber(RuneItems[Index] or "0") or 0;
-			local RuneMeta = RuneData.RuneMeta and RuneData.RuneMeta[Index];
-			if (RuneItemId <= 0 and RuneMeta and RuneMeta.ItemId and RuneMeta.ItemId > 0) then
-				RuneItemId = RuneMeta.ItemId;
-			end
-			AtTexture:ClearAllPoints();
-			AtTexture:SetSize(RunesIconSize, RunesIconSize);
-			AtTexture:SetTexture(RunesIconFile);
-			AtTexture:SetVertexColor(1, 1, 1, 1);
-			AtTexture:SetPoint("LEFT", RuneAnchorLine, "LEFT", AnchorStartX + (Index - 1) * (RunesIconSize + SlotGap), -30);
-			AtTexture:SetDrawLayer("OVERLAY");
-			AtTexture:Show();
-			if (AtTexture.IconTexts) then
-				AtTexture.IconTexts:SetText("");
-				if (RuneItemId > 0) then
-					local RuneItemIcon = RuneMeta and RuneMeta.Icon or "";
-					if (RuneItemIcon ~= "" and not string.find(RuneItemIcon, "\\", 1, true)) then
-						RuneItemIcon = "Interface\\Icons\\" .. RuneItemIcon;
-					end
-					if (RuneItemIcon == "" and RuneMeta and RuneMeta.DisplayId and RuneMeta.DisplayId > 0) then
-						RuneItemIcon = "Interface\\Icons\\" .. tostring(RuneMeta.DisplayId);
-					end
-					if (RuneItemIcon == "") then
-						RuneItemIcon = Dream_GetRuneItemIcon(RuneItemId);
-					end
-					if (RuneItemIcon and RuneItemIcon ~= "") then
-						AtTexture.IconTexts:SetText("|T" .. RuneItemIcon .. ":" .. RunesIconSize .. "|t");
-					end
-				end
-				AtTexture.IconTexts:Show();
-			end
-			if (AtTexture.ItemName) then
-				local RuneItemName = RuneMeta and RuneMeta.Name or "";
-				if (RuneItemName == "" and RuneItemId > 0 and Dream_GetRuneItemLink) then
-					RuneItemName = Dream_GetRuneItemLink(RuneItemId);
-				end
-				AtTexture.ItemName:SetText(RuneItemName or "");
-			end
-			if (AtTexture.AnimationGroup and AtTexture.AnimationGroup.Play) then
-				if (not AtTexture.AnimationGroup.IsPlaying or not AtTexture.AnimationGroup:IsPlaying()) then
-					AtTexture.AnimationGroup:Play();
-				end
-			elseif (AtTexture.Animation and AtTexture.Animation.Play) then
-				AtTexture.Animation:Play();
-			end
-		end
-	end
+	-- 符文已是单独物品，装备提示不再画符文孔。
+	Dream_ClearRuneTooltipTextures(Self);
 end
 
 -- A rune is a separate item record from the equipment itself. Refresh only
@@ -2845,7 +2699,7 @@ function OnItemGlobalTooltipShow(Self)
 		end
 		GuidLow = Dream_GetTooltipGuidLow(Self, GuidLow);
 		local HasFrozenSnapshot = Dream_IsFrozenGuidCached(GuidLow, ItemId);
-		local StableWidth = Zs_GuidLowStoreData.AtRunesData[GuidLow] and TipWidth or 360;
+		local StableWidth = 360;
 		Dream_SetStableTooltipWidth(Self, StableWidth);
 		-- FrozenCore is a data cache only. Never replay its TooltipLines while
 		-- the native client is resolving the item; ClearLines() in that replay
@@ -2890,7 +2744,7 @@ function OnItemGlobalTooltipShow(Self)
 		Dream_ItemTooltipDebug("show_render", ItemId, GuidLow, "hasGuid=" .. Dream_ItemTooltipBool(GuidData) .. " hasBig=" .. Dream_ItemTooltipBool(BigStat));
 		
 
-		local DesiredWidth = Zs_GuidLowStoreData.AtRunesData[GuidLow] and TipWidth or 360;
+		local DesiredWidth = 360;
 		Dream_SetStableTooltipWidth(Self, DesiredWidth);
 
 		local SuperGuidExtraText = (GuidData and Dream_BuildGuidExtraTooltipText(GuidData)) or "";
@@ -3288,10 +3142,6 @@ function OnItemGlobalTooltipShow(Self)
 		local ModuleTooltipKey = Dream_GetAllModuleTooltipKey(ModuleData, ItemId);
 		if (ModuleTooltipKey) then
 			Self.Dream_LastAllModuleTooltipKey = ModuleTooltipKey;
-		end
-
-		if (InAuctionOrMailFrame(Self:GetOwner()) and Zs_GuidLowStoreData.AtRunesData[GuidLow]) then
-			Self:AddLine("\n");
 		end
 
 		if (Zs_EntryIdStoreData.ItemLimitData1[ItemId]) then

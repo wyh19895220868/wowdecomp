@@ -89,8 +89,49 @@ local RUNE_QUALITY_COLORS = {
     [4] = { r = 1.0, g = 0.5, b = 0.0 },
 }
 
-local RUNE_MAX_VISIBLE_SLOTS = 20
 local RUNE_BAG_PAGE_SIZE = 8
+local RUNE_BOARD_TEXTURE = "Interface\\Icons\\fuwenUi\\100023"
+local RUNE_COVER_TEXTURE = "Interface\\Icons\\fuwenUi\\100024"
+local RUNE_SPIN_TEXTURE = {
+    [1] = "Interface\\Icons\\fuwenUi\\100020",
+    [2] = "Interface\\Icons\\fuwenUi\\100021",
+    [3] = "Interface\\Icons\\fuwenUi\\100019",
+    [4] = "Interface\\Icons\\fuwenUi\\100018"
+}
+local RUNE_SPIN_SECONDS = 8
+local RUNE_BOARD_WIDTH = 896
+local RUNE_BOARD_HEIGHT = 448
+-- 孔位按背景 1024x512 测量。颜色 1 绿、2 粉、3 浅蓝、4 橙。顺序就是存档槽位顺序。
+local RUNE_HOLES = {
+    { color = 1, x = 55, y = 145, radius = 24 },
+    { color = 1, x = 127, y = 103, radius = 24 },
+    { color = 1, x = 205, y = 81, radius = 24 },
+    { color = 1, x = 285, y = 87, radius = 24 },
+    { color = 1, x = 363, y = 113, radius = 24 },
+    { color = 1, x = 435, y = 95, radius = 24 },
+    { color = 1, x = 557, y = 109, radius = 38 },
+    { color = 2, x = 87, y = 235, radius = 24 },
+    { color = 2, x = 161, y = 197, radius = 24 },
+    { color = 2, x = 237, y = 211, radius = 24 },
+    { color = 2, x = 312, y = 244, radius = 27 },
+    { color = 2, x = 385, y = 227, radius = 24 },
+    { color = 2, x = 458, y = 190, radius = 27 },
+    { color = 2, x = 537, y = 199, radius = 38 },
+    { color = 3, x = 49, y = 321, radius = 24 },
+    { color = 3, x = 126, y = 344, radius = 27 },
+    { color = 3, x = 201, y = 363, radius = 24 },
+    { color = 3, x = 279, y = 351, radius = 24 },
+    { color = 3, x = 353, y = 317, radius = 24 },
+    { color = 3, x = 422, y = 298, radius = 27 },
+    { color = 3, x = 529, y = 297, radius = 38 },
+    { color = 4, x = 95, y = 451, radius = 24 },
+    { color = 4, x = 173, y = 437, radius = 24 },
+    { color = 4, x = 251, y = 455, radius = 24 },
+    { color = 4, x = 327, y = 435, radius = 24 },
+    { color = 4, x = 395, y = 409, radius = 24 },
+    { color = 4, x = 463, y = 383, radius = 24 },
+    { color = 4, x = 553, y = 387, radius = 38 }
+}
 
 local function GetDB()
     ItemForgeUIDB = ItemForgeUIDB or {}
@@ -605,51 +646,37 @@ function UI:RefreshRunePanel()
         self.selectedRuneSlot = nil
     end
 
-    for i = 1, RUNE_MAX_VISIBLE_SLOTS do
-        local button = f.runeSlots[i]
+    local slotById = {}
+    for i = 1, #slots do
         local slotData = slots[i]
-        if not slotData then
-            button.slotId = nil
-            button.runeItemId = nil
-            button:Hide()
-        else
-            button:Show()
+        if slotData and slotData.slotId then
+            slotById[slotData.slotId] = slotData
         end
-        local isActive = slotData ~= nil
-        local slotId = slotData and slotData.slotId or i
-        local runeItemId = slotData and slotData.runeItemId or 0
-        local filled = runeItemId and runeItemId > 0
-        local color = GetRuneQualityColor(slotData and slotData.quality or 0)
+    end
 
-        if not isActive then
-            button.selected:Hide()
-        else
-        button.slotId = slotId
-        button.runeItemId = runeItemId
-        button.runeName = slotData and slotData.name or ""
-        button.runeDesc = slotData and slotData.desc or ""
-        button:SetAlpha(1)
-        button.label:SetText(tostring(slotId))
-        button.name:SetText(filled and TrimText(slotData.name, 12) or "空")
-        button.name:SetTextColor(filled and color.r or 0.55, filled and color.g or 0.55, filled and color.b or 0.55)
-
+    local holes = f.runeBoard and f.runeBoard.holes or {}
+    for i = 1, #holes do
+        local hole = holes[i]
+        local slotData = slotById[i]
+        local opened = slotData ~= nil
+        local runeItemId = opened and (slotData.runeItemId or 0) or 0
+        local filled = runeItemId > 0
+        hole.opened = opened
+        hole.slotId = opened and slotData.slotId or nil
+        hole.runeItemId = filled and runeItemId or nil
+        hole.runeName = slotData and slotData.name or ""
+        hole.runeDesc = slotData and slotData.desc or ""
         if filled then
             local _, _, _, _, _, _, _, _, _, texture = ItemForge_GetItemInfo(runeItemId)
-            button.icon:SetTexture(texture or "Interface\\Icons\\INV_Misc_Gem_Variety_01")
-            button:SetBackdropBorderColor(color.r, color.g, color.b, 1)
-        elseif isActive then
-            button.icon:SetTexture("Interface\\ItemSocketingFrame\\UI-EmptySocket-Prismatic")
-            button:SetBackdropBorderColor(self.selectedRuneSlot == slotId and 0.95 or 0.38, self.selectedRuneSlot == slotId and 0.55 or 0.32, self.selectedRuneSlot == slotId and 1 or 0.42, 1)
+            hole.icon:SetTexture(texture or "Interface\\Icons\\INV_Misc_Gem_Variety_01")
+            hole.icon:Show()
         else
-            button.icon:SetTexture(nil)
-            button:SetBackdropBorderColor(0.22, 0.22, 0.26, 0.8)
+            hole.icon:Hide()
         end
-
-        if self.selectedRuneSlot == slotId and isActive then
-            button.selected:Show()
+        if opened and self.selectedRuneSlot == slotData.slotId then
+            hole.selected:Show()
         else
-            button.selected:Hide()
-        end
+            hole.selected:Hide()
         end
     end
 
@@ -704,6 +731,7 @@ function UI:RefreshContent()
     local f = self.frame
     self:RefreshTabs()
     if f.runePanel then f.runePanel:Hide() end
+    if f.runeBoard then f.runeBoard:Hide() end
     if f.refinePanel then f.refinePanel:Hide() end
     if f.detail then f.detail:Show() end
     if f.sectionTitle then f.sectionTitle:Show() end
@@ -791,6 +819,7 @@ function UI:RefreshContent()
             UI:SendRuneCommand("BAG")
         end)
         if f.runePanel then f.runePanel:Show() end
+        if f.runeBoard then f.runeBoard:Show() end
         self:RefreshRunePanel()
         if data.status and data.status ~= "" then
             self:SetStatus(data.status, 0.85, 0.62, 1)
@@ -1299,46 +1328,51 @@ function UI:CreateFrame()
         f.refineButtons[category] = button
     end
 
-    local slotTitle = MakeLine(runePanel, "符文槽", 20, -74, "GameFontNormalSmall")
-    slotTitle:SetTextColor(0.95, 0.55, 1)
-    local bagTitle = MakeLine(runePanel, "背包符文", 236, -74, "GameFontNormalSmall")
+    local bagTitle = MakeLine(runePanel, "背包符文", 16, -74, "GameFontNormalSmall")
     bagTitle:SetTextColor(1, 0.82, 0.25)
 
-    f.runeSlots = {}
-    for i = 1, RUNE_MAX_VISIBLE_SLOTS do
-        local runeSlot = CreateFrame("Button", nil, runePanel)
-        runeSlot:SetSize(38, 38)
-        runeSlot:SetPoint("TOPLEFT", 20 + ((i - 1) % 5) * 41, -96 - math.floor((i - 1) / 5) * 44)
-        runeSlot:SetBackdrop({
-            bgFile = "Interface\\Buttons\\UI-Slot-Background",
-            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-            tile = false,
-            edgeSize = 12,
-            insets = { left = 3, right = 3, top = 3, bottom = 3 }
-        })
-        runeSlot:SetBackdropColor(0.03, 0.025, 0.04, 1)
-        runeSlot:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square")
-        runeSlot:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-        runeSlot.icon = runeSlot:CreateTexture(nil, "ARTWORK")
-        runeSlot.icon:SetPoint("TOPLEFT", 6, -6)
-        runeSlot.icon:SetPoint("BOTTOMRIGHT", -6, 6)
-        runeSlot.selected = runeSlot:CreateTexture(nil, "OVERLAY")
-        runeSlot.selected:SetTexture("Interface\\Buttons\\UI-ActionButton-Border")
-        runeSlot.selected:SetBlendMode("ADD")
-        runeSlot.selected:SetSize(58, 58)
-        runeSlot.selected:SetPoint("CENTER")
-        runeSlot.selected:SetVertexColor(0.95, 0.55, 1, 0.9)
-        runeSlot.selected:Hide()
-        runeSlot.label = runeSlot:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        runeSlot.label:SetPoint("TOPLEFT", 3, -2)
-        runeSlot.label:SetTextColor(1, 0.9, 0.55)
-        runeSlot.name = runeSlot:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-        runeSlot.name:SetPoint("TOP", runeSlot, "BOTTOM", 0, -1)
-        runeSlot.name:SetWidth(40)
-        runeSlot.name:SetJustifyH("CENTER")
-        runeSlot:SetScript("OnClick", function(self, mouseButton)
-            if not self.slotId or self:GetAlpha() < 0.5 then
-                UI:SetStatus("该位置没有可用符文槽", 1, 0.35, 0.3)
+    local scale = RUNE_BOARD_WIDTH / 1024
+    local board = CreateFrame("Frame", "ItemForgeRuneBoard", UIParent)
+    board:SetSize(RUNE_BOARD_WIDTH, RUNE_BOARD_HEIGHT)
+    board:SetPoint("TOPLEFT", f, "TOPRIGHT", 8, -40)
+    board:SetFrameStrata("HIGH")
+    board:SetFrameLevel((f:GetFrameLevel() or 1) + 20)
+    board:Hide()
+    board.spinAngle = 0
+    local background = board:CreateTexture(nil, "BACKGROUND")
+    background:SetAllPoints()
+    background:SetTexture(RUNE_BOARD_TEXTURE)
+    board.holes = {}
+    for i = 1, #RUNE_HOLES do
+        local info = RUNE_HOLES[i]
+        local ring = info.radius * 2 * scale
+        local coverSize = ring * 0.72
+        local hole = CreateFrame("Button", nil, board)
+        hole:SetSize(ring, ring)
+        hole:SetPoint("CENTER", board, "TOPLEFT", info.x * scale, -info.y * scale)
+        hole:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        hole.spin = hole:CreateTexture(nil, "ARTWORK")
+        hole.spin:SetTexture(RUNE_SPIN_TEXTURE[info.color])
+        hole.spin:SetSize(ring, ring)
+        hole.spin:SetPoint("CENTER")
+        hole.cover = hole:CreateTexture(nil, "OVERLAY")
+        hole.cover:SetTexture(RUNE_COVER_TEXTURE)
+        hole.cover:SetSize(coverSize, coverSize)
+        hole.cover:SetPoint("CENTER")
+        hole.icon = hole:CreateTexture(nil, "OVERLAY")
+        hole.icon:SetSize(coverSize * 0.62, coverSize * 0.62)
+        hole.icon:SetPoint("CENTER")
+        hole.icon:Hide()
+        hole.selected = hole:CreateTexture(nil, "OVERLAY")
+        hole.selected:SetTexture("Interface\\Buttons\\UI-ActionButton-Border")
+        hole.selected:SetBlendMode("ADD")
+        hole.selected:SetSize(ring + 18, ring + 18)
+        hole.selected:SetPoint("CENTER")
+        hole.selected:SetVertexColor(1, 0.82, 0.25, 0.9)
+        hole.selected:Hide()
+        hole:SetScript("OnClick", function(self, mouseButton)
+            if not self.opened or not self.slotId then
+                UI:SetStatus("这个孔还没有开启", 1, 0.35, 0.3)
                 return
             end
             if mouseButton == "RightButton" and self.runeItemId and self.runeItemId > 0 then
@@ -1346,32 +1380,53 @@ function UI:CreateFrame()
                 return
             end
             UI.selectedRuneSlot = self.slotId
-            UI:SetStatus("已选择符文槽 " .. tostring(self.slotId), 0.85, 0.62, 1)
+            UI:SetStatus("已选择符文孔 " .. tostring(self.slotId), 0.85, 0.62, 1)
             UI:RefreshRunePanel()
         end)
-        runeSlot:SetScript("OnEnter", function(self)
+        hole:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:AddLine("符文槽 " .. tostring(self.slotId or i), 0.95, 0.55, 1)
-            if self.runeItemId and self.runeItemId > 0 then
+            GameTooltip:AddLine("符文孔 " .. tostring(i), 0.95, 0.55, 1)
+            if not self.opened then
+                GameTooltip:AddLine("未开启", 0.7, 0.7, 0.7)
+            elseif self.runeItemId and self.runeItemId > 0 then
                 GameTooltip:AddLine(self.runeName or "", 1, 1, 1)
                 if self.runeDesc and self.runeDesc ~= "" then
                     GameTooltip:AddLine(self.runeDesc, 0.3, 1, 0.45, true)
                 end
                 GameTooltip:AddLine("右键移除", 0.8, 0.8, 0.8)
             else
-                GameTooltip:AddLine("空槽", 0.8, 0.8, 0.8)
+                GameTooltip:AddLine("空孔", 0.8, 0.8, 0.8)
             end
             GameTooltip:Show()
         end)
-        runeSlot:SetScript("OnLeave", function() GameTooltip:Hide() end)
-        f.runeSlots[i] = runeSlot
+        hole:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        board.holes[i] = hole
     end
+    board:SetScript("OnUpdate", function(self, elapsed)
+        self.spinAngle = (self.spinAngle + (elapsed or 0) / RUNE_SPIN_SECONDS) % 1
+        local angle = self.spinAngle * math.pi * 2
+        for holeIndex = 1, #self.holes do
+            local spin = self.holes[holeIndex].spin
+            if spin.SetRotation then
+                spin:SetRotation(angle)
+            end
+        end
+    end)
+    f.runeBoard = board
+    f:HookScript("OnHide", function()
+        board:Hide()
+    end)
+    f:HookScript("OnShow", function()
+        if UI.activeTab == "rune" then
+            board:Show()
+        end
+    end)
 
     f.runeBagButtons = {}
     for i = 1, RUNE_BAG_PAGE_SIZE do
         local row = CreateFrame("Button", nil, runePanel)
-        row:SetSize(230, 24)
-        row:SetPoint("TOPLEFT", 236, -96 - (i - 1) * 25)
+        row:SetSize(450, 24)
+        row:SetPoint("TOPLEFT", 16, -96 - (i - 1) * 25)
         row:SetBackdrop({
             bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
             edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -1382,11 +1437,11 @@ function UI:CreateFrame()
         })
         row:SetBackdropColor(0.045, 0.04, 0.055, 0.92)
         row.name = MakeLine(row, "", 8, -4, "GameFontHighlightSmall")
-        row.name:SetWidth(128)
-        row.slot = MakeLine(row, "", 145, -4, "GameFontDisableSmall")
-        row.slot:SetWidth(52)
+        row.name:SetWidth(280)
+        row.slot = MakeLine(row, "", 300, -4, "GameFontDisableSmall")
+        row.slot:SetWidth(80)
         row.desc = MakeLine(row, "", 8, -14, "GameFontDisableSmall")
-        row.desc:SetWidth(205)
+        row.desc:SetWidth(420)
         row:RegisterForClicks("LeftButtonUp")
         row:SetScript("OnClick", function(self)
             if not self.runeItemId then return end
@@ -1409,11 +1464,11 @@ function UI:CreateFrame()
         f.runeBagButtons[i] = row
     end
 
-    f.runeEmptyBag = MakeLine(runePanel, "背包中没有可用符文", 240, -112, "GameFontDisable")
+    f.runeEmptyBag = MakeLine(runePanel, "背包中没有可用符文", 20, -112, "GameFontDisable")
     f.runeEmptyBag:SetWidth(220)
     f.runeBagPrev = CreateFrame("Button", nil, runePanel, "UIPanelButtonTemplate")
     f.runeBagPrev:SetSize(52, 22)
-    f.runeBagPrev:SetPoint("BOTTOMLEFT", runePanel, "BOTTOMLEFT", 274, 18)
+    f.runeBagPrev:SetPoint("BOTTOMLEFT", runePanel, "BOTTOMLEFT", 16, 18)
     f.runeBagPrev:SetText("上一页")
     f.runeBagPrev:SetScript("OnClick", function()
         UI.runeBagPage = math.max(1, UI.runeBagPage - 1)
