@@ -48,7 +48,7 @@ static uint32_t s_pendingLogQueries;
 GuildBankLogEntry CGGuildBankInfo::m_log[7][25];
 
 // STATIC: 0x00C1DC30
-uint32_t CGGuildBankInfo::m_withdrawMoneyRemaining;
+int32_t CGGuildBankInfo::m_withdrawMoneyRemaining;
 
 // STATIC: 0x00C1DC34
 int32_t CGGuildBankInfo::m_remainingWithdrawMoney;
