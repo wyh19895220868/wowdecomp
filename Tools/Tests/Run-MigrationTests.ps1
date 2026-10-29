@@ -29,5 +29,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Native protocol sync failed' }
     & powershell -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot\Test-AddonCommandSync.ps1"
     if ($LASTEXITCODE -ne 0) { throw 'Addon command sync failed' }
+    & powershell -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot\Test-TooltipPayloadSync.ps1"
+    if ($LASTEXITCODE -ne 0) { throw 'Tooltip payload sync failed' }
     Write-Output 'All migration source/fixture checks passed; live game acceptance is separate.'
 } finally { Pop-Location }
