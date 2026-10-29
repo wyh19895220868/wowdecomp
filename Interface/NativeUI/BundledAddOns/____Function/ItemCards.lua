@@ -7,11 +7,26 @@ local CARD_H = 148
 local CARD_GAP_X = 14
 local CARD_GAP_Y = 12
 
-local DARK_PATH = "Interface\\Icons\\ItemCards\\Dark\\"
+local DARK_BACK = "Interface\\Icons\\ItemCards\\Dark\\back"
 local COLOR_PATH = "Interface\\Icons\\ItemCards\\Color\\"
-local FRAME_PATH = "Interface\\Icons\\ItemCards\\Frame\\level_"
+local FRAME_ATLAS = "Interface\\Icons\\ItemCards\\Frame\\cardAtlasLucky"
 local PANEL_BG = "Interface\\Icons\\ItemCards\\UI\\panel_bg"
+local SET_PANEL_BG = "Interface\\Icons\\ItemCards\\UI\\set_panel"
 local BTN_UPGRADE = "Interface\\Icons\\ItemCards\\UI\\btn_upgrade"
+
+-- cardAtlasLucky 1024 图集中 1-10 级边框 UV（按标注顺序）
+local FRAME_UV = {
+    [1]  = { 380 / 1024, 558 / 1024, 256 / 1024, 512 / 1024 }, -- 银框无光
+    [2]  = { 200 / 1024, 378 / 1024, 256 / 1024, 512 / 1024 }, -- 银框绿
+    [3]  = { 200 / 1024, 378 / 1024,   0 / 1024, 256 / 1024 }, -- 银框蓝
+    [4]  = {  10 / 1024, 188 / 1024, 256 / 1024, 512 / 1024 }, -- 银框紫
+    [5]  = {  10 / 1024, 188 / 1024,   0 / 1024, 256 / 1024 }, -- 银框橙
+    [6]  = { 380 / 1024, 558 / 1024, 512 / 1024, 768 / 1024 }, -- 金框无光
+    [7]  = { 200 / 1024, 378 / 1024, 768 / 1024,1024 / 1024 }, -- 金框绿
+    [8]  = { 200 / 1024, 378 / 1024, 512 / 1024, 768 / 1024 }, -- 金框蓝
+    [9]  = {  10 / 1024, 188 / 1024, 512 / 1024, 768 / 1024 }, -- 金框紫
+    [10] = {  10 / 1024, 188 / 1024, 768 / 1024,1024 / 1024 }, -- 金框橙
+}
 
 local GOLD = { 0.95, 0.78, 0.28, 1 }
 local GOLD_MUTED = { 0.55, 0.42, 0.16, 0.95 }
@@ -36,6 +51,11 @@ local function ClampLevel(level)
         return MAX_LEVEL
     end
     return math.floor(level)
+end
+
+local function ApplyFrameUV(texture, level)
+    local uv = FRAME_UV[ClampLevel(level)] or FRAME_UV[1]
+    texture:SetTexCoord(uv[1], uv[2], uv[3], uv[4])
 end
 
 local function GetSlotLevel(slot)
@@ -122,8 +142,15 @@ local function CreateSetPanel(parent, key, y)
         edgeSize = 12,
         insets = { left = 3, right = 3, top = 3, bottom = 3 }
     })
-    panel:SetBackdropColor(0.02, 0.025, 0.03, 0.82)
+    panel:SetBackdropColor(0.02, 0.025, 0.03, 0.55)
     panel:SetBackdropBorderColor(unpack(GOLD_MUTED))
+
+    local bg = panel:CreateTexture(nil, "BACKGROUND")
+    bg:SetTexture(SET_PANEL_BG)
+    bg:SetPoint("TOPLEFT", 4, -4)
+    bg:SetPoint("BOTTOMRIGHT", -4, 4)
+    bg:SetVertexColor(0.55, 0.55, 0.6, 0.85)
+    panel.Bg = bg
 
     local title = CreateLabel(panel, 15, 400)
     title:SetPoint("TOPLEFT", 12, -10)
@@ -176,24 +203,30 @@ local function RefreshCardVisual(slot)
     local level = GetSlotLevel(slot)
 
     if opened then
-        btn.Art:SetTexture(COLOR_PATH .. tostring(slot))
+        -- 翻开：VIP 幸运边框图集按等级取框，中心再叠物品图标 / 彩色纹章
+        btn.Art:SetTexture(FRAME_ATLAS)
+        ApplyFrameUV(btn.Art, level)
         btn.Art:SetVertexColor(1, 1, 1, 1)
-        btn.Frame:SetTexture(FRAME_PATH .. tostring(level))
-        btn.Frame:Show()
+        btn.Emblem:SetTexture(COLOR_PATH .. tostring(slot))
+        btn.Emblem:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        btn.Emblem:Show()
+        btn.Frame:Hide()
         btn.Lock:Hide()
         btn.LevelText:SetText("Lv." .. level)
         btn.LevelText:Show()
     else
-        btn.Art:SetTexture(DARK_PATH .. tostring(slot))
-        btn.Art:SetVertexColor(0.85, 0.85, 0.85, 1)
-        btn.Frame:SetTexture(FRAME_PATH .. "1")
-        btn.Frame:Show()
+        -- 未翻开：VIP 灰/暗牌背
+        btn.Art:SetTexture(DARK_BACK)
+        btn.Art:SetTexCoord(0, 1, 0, 1)
+        btn.Art:SetVertexColor(0.9, 0.9, 0.9, 1)
+        btn.Emblem:Hide()
+        btn.Frame:Hide()
         btn.Lock:Show()
         btn.LevelText:Hide()
     end
 
     if hasItem then
-        btn.IconText:SetText("|T" .. DreamGetItemIcon(btn:GetID()) .. ":48|t")
+        btn.IconText:SetText("|T" .. DreamGetItemIcon(btn:GetID()) .. ":42|t")
         CardsTaskButtons[slot]:Show()
     else
         btn.IconText:SetText("")
@@ -259,8 +292,14 @@ for i = 1, CARD_COUNT do
     btn.Art = btn:CreateTexture(nil, "BACKGROUND")
     btn.Art:SetAllPoints(btn)
 
+    btn.Emblem = btn:CreateTexture(nil, "BORDER")
+    btn.Emblem:SetPoint("CENTER", 0, 6)
+    btn.Emblem:SetSize(64, 64)
+    btn.Emblem:Hide()
+
     btn.Frame = btn:CreateTexture(nil, "ARTWORK")
     btn.Frame:SetAllPoints(btn)
+    btn.Frame:Hide()
 
     btn.Select = btn:CreateTexture(nil, "OVERLAY")
     btn.Select:SetAllPoints(btn)
@@ -278,7 +317,7 @@ for i = 1, CARD_COUNT do
 
     btn.IconText = btn:CreateFontString(nil, "OVERLAY")
     btn.IconText:SetFont(Dream_GameFont, 12)
-    btn.IconText:SetPoint("CENTER", 0, -8)
+    btn.IconText:SetPoint("CENTER", 0, -18)
 
     btn.LevelText = btn:CreateFontString(nil, "OVERLAY")
     btn.LevelText:SetFont(Dream_GameFont, 12, "OUTLINE")
