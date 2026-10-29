@@ -247,14 +247,139 @@ local function setAmountText(label, current, maximum, compact)
     setLabelText(label, label.nativeAmount)
 end
 
-local function nativeTargetHealth(current, maximum)
-    if not current or not maximum then return nil, nil, false end
+-- ---------------------------------------------------------------------------
+-- Native multi-bar target panel.
+-- The client's own FrameXML draws it from the native snapshot
+-- (HEALTH_BARS / CURRENT_HEALTH_BARS / TOTAL_HEALTH / MAX_TOTAL_HEALTH); no
+-- addon message is involved. Layout matches the retired ____Function frame:
+-- remaining-bar count on the left, one segmented fill, total on the right.
+-- ---------------------------------------------------------------------------
+local multiBar
+local multiBarArt = "Interface\\Icons\\newUi\\"
 
-    -- The server marks the aggregate native snapshot with the number of bars.
-    -- The multi-bar addon keeps its own query and UI; the target frame never
-    -- waits for or reads that addon state.
+local function multiBarTextureIndex()
+    local maxBars = tonumber(value("target", "HEALTH_BARS") or "1") or 1
+    local currentBars = tonumber(value("target", "CURRENT_HEALTH_BARS") or "1") or 1
+    local index = maxBars - currentBars + 1
+    if index < 1 then
+        index = 1
+    elseif index > 10 then
+        index = ((index - 1) % 10) + 1
+    end
+    return index
+end
+
+local function createMultiBar()
+    if multiBar or not TargetFrame then return multiBar end
+
+    local frame = CreateFrame("Frame", "NativeUITargetMultiBar", TargetFrame)
+    frame:SetSize(440, 55)
+    frame:SetPoint("RIGHT", TargetFrame, "RIGHT", 560, 5)
+    frame:SetFrameLevel(TargetFrame:GetFrameLevel() + 5)
+
+    local background = frame:CreateTexture(nil, "BACKGROUND")
+    background:SetTexture(multiBarArt .. "xtback")
+    background:SetAllPoints(frame)
+
+    local count = CreateFrame("Frame", nil, frame)
+    count:SetSize(40, 40)
+    count:SetPoint("RIGHT", frame, "LEFT", 46, 0)
+    count:SetFrameLevel(frame:GetFrameLevel() + 1)
+    local countBackground = count:CreateTexture(nil, "BACKGROUND")
+    countBackground:SetTexture(multiBarArt .. "ER_item")
+    countBackground:SetAllPoints(count)
+
+    local font, size, flags = GameFontNormal:GetFont()
+    font = font or "Fonts\\FRIZQT__.TTF"
+    size = size or 10
+    flags = flags or "OUTLINE"
+
+    local countText = count:CreateFontString(nil, "OVERLAY")
+    countText:SetFont(font, 14, flags)
+    countText:SetAllPoints(count)
+    countText:SetJustifyH("CENTER")
+    countText:SetJustifyV("MIDDLE")
+    countText:SetTextColor(0, 1, 1)
+
+    local backFill = CreateFrame("StatusBar", nil, frame)
+    backFill:SetOrientation("HORIZONTAL")
+    backFill:SetStatusBarTexture(multiBarArt .. "xbar2")
+    backFill:SetStatusBarColor(1, 1, 1)
+    backFill:SetPoint("LEFT", frame, "LEFT", 58, 0)
+    backFill:SetSize(297, 38.5)
+    backFill:SetFrameLevel(frame:GetFrameLevel() - 3)
+    backFill:SetMinMaxValues(0, 100)
+    backFill:SetValue(100)
+
+    local fill = CreateFrame("StatusBar", nil, frame)
+    fill:SetOrientation("HORIZONTAL")
+    fill:SetStatusBarTexture(multiBarArt .. "xbar1")
+    fill:SetStatusBarColor(1, 1, 1)
+    fill:SetPoint("LEFT", frame, "LEFT", 58, 0)
+    fill:SetSize(297, 38.5)
+    fill:SetFrameLevel(frame:GetFrameLevel() - 1)
+    fill:SetMinMaxValues(0, 100)
+    fill:SetValue(100)
+
+    local total = frame:CreateFontString(nil, "OVERLAY")
+    total:SetFont(font, 15, flags)
+    total:SetSize(297 - 20, 38.5)
+    total:SetPoint("CENTER", fill, "CENTER", -10, -2)
+    total:SetJustifyH("RIGHT")
+    total:SetTextColor(0, 1, 0.6)
+
+    frame.countText, frame.backFill, frame.fill, frame.total = countText, backFill, fill, total
+    frame:Hide()
+    multiBar = frame
+    return frame
+end
+
+local function updateMultiBar()
     local bars = tonumber(value("target", "HEALTH_BARS") or "1") or 1
-    return current, maximum, bars > 1
+    if not UnitExists("target") or bars <= 1 then
+        if multiBar then multiBar:Hide() end
+        return
+    end
+    local frame = createMultiBar()
+    if not frame then return end
+
+    local currentBars = tonumber(value("target", "CURRENT_HEALTH_BARS") or "0") or 0
+    local current = value("target", "CUR_HEALTH")
+    local maximum = value("target", "MAX_HEALTH")
+    local totalCurrent = value("target", "TOTAL_HEALTH")
+    local totalMaximum = value("target", "MAX_TOTAL_HEALTH")
+    local maxNumber = tonumber(maximum) or 0
+    local fraction = maxNumber > 0 and math.min(1, math.max(0, (tonumber(current) or 0) / maxNumber)) or 0
+
+    local index = multiBarTextureIndex()
+    if frame.textureIndex ~= index then
+        frame.textureIndex = index
+        frame.fill:SetStatusBarTexture(multiBarArt .. "xbar" .. index)
+        frame.backFill:SetStatusBarTexture(multiBarArt .. "xbar" .. (index % 10 + 1))
+    end
+    frame.fill:SetValue(fraction * 100)
+
+    if currentBars <= 0 or not totalCurrent or not totalMaximum then
+        frame.countText:Hide()
+        frame.total:Hide()
+    else
+        local countText = tostring(currentBars)
+        if string.len(countText) > 10 then countText = "9999999999+" end
+        setLabelText(frame.countText, "|cFF00FFFF" .. countText .. "X|r")
+        setLabelText(frame.total, formatAmount(totalCurrent) .. " / " .. formatAmount(totalMaximum))
+        frame.countText:Show()
+        frame.total:Show()
+    end
+    frame:Show()
+end
+
+local function nativeTargetHealth(current, maximum)
+    if not current or not maximum then return nil, nil end
+
+    -- CUR_HEALTH/MAX_HEALTH are the single visible bar. The server keeps the
+    -- multi-bar sum in TOTAL_HEALTH/MAX_TOTAL_HEALTH, so the avatar frame shows
+    -- one bar immediately and never waits for an addon reply.
+    return current, maximum
 end
 
 local function updateBar(bar, unit, resource)
@@ -263,23 +388,8 @@ local function updateBar(bar, unit, resource)
     if not name then return end
     hideLegacyNativeOverlay(bar, name)
     local current, maximum = value(unit, "CUR_" .. resource), value(unit, "MAX_" .. resource)
-    -- INT256 only marks a cached per-bar snapshot; it does not mean the
-    -- selected target's multi-bar query is ready. Never let that projection
-    -- flash before the authoritative target data arrives.
-    local targetDisplayMaximum
-    local targetHasMultipleHealth = false
     if unit == "target" and resource == "HEALTH" then
-        local nativeCurrent, nativeMaximum, isMultiple = nativeTargetHealth(current, maximum)
-        if nativeCurrent and nativeMaximum then
-            current, maximum = nativeCurrent, nativeMaximum
-            targetDisplayMaximum = nativeMaximum
-            targetHasMultipleHealth = isMultiple
-        else
-            -- The compatibility UNIT_FIELD_HEALTH value may already be 42,
-            -- but it is not an authoritative native snapshot. Keep the label
-            -- blank until the server supplies the target's native values.
-            current, maximum = nil, nil
-        end
+        current, maximum = nativeTargetHealth(current, maximum)
     end
     if unit == "target" and not UnitExists(unit) then current, maximum = nil, nil end
     if not current or not maximum then
@@ -307,7 +417,7 @@ local function updateBar(bar, unit, resource)
         local percent = math.floor(fraction * 100 + 0.5)
         if fraction > 0 then percent = math.max(1, percent) end
         setLabelText(left, tostring(percent) .. "%")
-        setAmountText(right, current, targetHasMultipleHealth and targetDisplayMaximum or nil, targetHasMultipleHealth)
+        setAmountText(right, current)
         hideStockBarText(bar, name, left, right)
         left:Show()
         right:Show()
@@ -323,6 +433,7 @@ local function refreshBars()
     updating = true
     for _, spec in ipairs(bars) do updateBar(_G[spec[1]], spec[2], spec[3]) end
     updating = false
+    updateMultiBar()
 end
 local barSpecs = {}
 for _, spec in ipairs(bars) do barSpecs[spec[1]] = spec end
@@ -341,6 +452,7 @@ local function refreshTarget()
     refreshOneBar(TargetFrameHealthBar)
     refreshOneBar(TargetFrameManaBar)
     refreshOneBar(TargetFrameToTHealthBar)
+    updateMultiBar()
 end
 NativeUI_RefreshTargetHealth = refreshTarget
 if TargetFrame_Update then hooksecurefunc("TargetFrame_Update", refreshTarget) end

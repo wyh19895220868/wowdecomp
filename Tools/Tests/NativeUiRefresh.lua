@@ -1,4 +1,5 @@
 dofile("Tools/Tests/WowUiMock.lua")
+TargetFrame = CreateFrame("Frame", "TargetFrame")
 -- WoW frame instances use nil for addon state, not API fallback methods.
 local function prepare(name)
     local bar = CreateFrame("StatusBar", name)
@@ -58,7 +59,7 @@ for i = 1, 100 do Tick(0.1) end
 print("unchanged values across 100 ticks: bar writes=" .. metrics.values)
 assert(metrics.values == 0, "unchanged health rewrites every bar on every poll")
 
--- A target can have its compatibility fields before the aggregate native snapshot.
+-- A target can have its compatibility fields before the native snapshot.
 -- The plugin query is intentionally stale here: the avatar frame must ignore it.
 local targetQueryData, targetQueryPending = nil, true
 local targetQueryReads = 0
@@ -69,40 +70,49 @@ function Dream_GetCustomTargetHealth()
     return targetQueryData, targetQueryPending
 end
 local nativeTargetCurrent, nativeTargetMaximum, nativeTargetBars
+local nativeTargetCurrentBars, nativeTargetTotalCurrent, nativeTargetTotalMaximum
 function NativeUnitValue(unit, key)
     if unit ~= "target" then return readValue(unit, key) end
     if key == "INT256" then return "1" end
     if key == "CUR_HEALTH" then return nativeTargetCurrent end
     if key == "MAX_HEALTH" then return nativeTargetMaximum end
     if key == "HEALTH_BARS" then return nativeTargetBars end
+    if key == "CURRENT_HEALTH_BARS" then return nativeTargetCurrentBars end
+    if key == "TOTAL_HEALTH" then return nativeTargetTotalCurrent end
+    if key == "MAX_TOTAL_HEALTH" then return nativeTargetTotalMaximum end
 end
 stock:SetText("42"); stock:Show()
 hooks.TargetFrame_Update()
 assert(TargetFrameHealthBar.nativeHealthRight:GetText() == "",
-    "compatibility target value is visible before the aggregate native snapshot")
+    "compatibility target value is visible before the native snapshot")
 assert(not stock:IsShown(), "pending native snapshot leaves the stock projection visible")
 assert(targetQueryReads == 0, "native target frame called the multi-bar plugin query")
 
 nativeTargetCurrent, nativeTargetMaximum, nativeTargetBars = "2500000000", "12500000000", "5"
+nativeTargetCurrentBars, nativeTargetTotalCurrent, nativeTargetTotalMaximum = "3", "32500000000", "62500000000"
 targetQueryData = { MaxMultipleHp = 5, TotalHealthText = "999/999" }
 targetQueryPending = false
 hooks.TargetFrame_Update()
-assert(TargetFrameHealthBar.nativeHealthRight:GetText() == "25亿/125亿",
-    "native aggregate snapshot did not render 25亿/125亿")
+assert(TargetFrameHealthBar.nativeHealthRight:GetText() == "25亿",
+    "target frame did not show the single bar value 25亿")
+assert(NativeUITargetMultiBar and NativeUITargetMultiBar:IsShown(), "native multi-bar panel is hidden")
+assert(NativeUITargetMultiBar.countText:GetText() == "|cFF00FFFF3X|r", "native bar count is not 3X")
+assert(NativeUITargetMultiBar.total:GetText() == "325亿 / 625亿", "native total text is wrong")
 targetQueryData = nil
 targetQueryPending = true
 hooks.TargetFrame_Update()
-assert(TargetFrameHealthBar.nativeHealthRight:GetText() == "25亿/125亿",
+assert(TargetFrameHealthBar.nativeHealthRight:GetText() == "25亿",
     "native target frame incorrectly waited for the multi-bar plugin query")
 stock:SetText("42"); stock:Show()
 hooks.UnitFrameHealthBar_Update(TargetFrameHealthBar)
-assert(not stock:IsShown() and TargetFrameHealthBar.nativeHealthRight:GetText() == "25亿/125亿",
-    "stock redraw replaced the native aggregate health with 42")
-print("Target compatibility 42 -> native aggregate 25亿/125亿 regression passed")
+assert(not stock:IsShown() and TargetFrameHealthBar.nativeHealthRight:GetText() == "25亿",
+    "stock redraw replaced the native single bar health with 42")
+print("Target compatibility 42 -> native single bar 25亿 regression passed")
 nativeTargetCurrent, nativeTargetMaximum, nativeTargetBars = "45000000000", "90000000000", "1"
 hooks.TargetFrame_Update()
 assert(TargetFrameHealthBar.nativeHealthRight:GetText() == "450亿",
     "single-bar native target unexpectedly displays a health denominator")
+assert(not NativeUITargetMultiBar:IsShown(), "single-bar target keeps the multi-bar panel visible")
 assert(targetQueryReads == 0, "single-bar target refresh called the multi-bar plugin query")
 print("Single-bar native target formatting regression passed")
 print("Native UI refresh regression passed")
