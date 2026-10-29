@@ -157,7 +157,13 @@ end)
 
 local AntiPngButton = CreateFrame("Button", "AntiPngButton", NewLeftLuckFrame);
 AntiPngButton:SetPoint("CENTER");
-AntiPngButton:SetBackdrop({ bgFile = VoidIcon })
+-- Keep the pointer above every prize slot.  The slots use frame level 100,
+-- so the old default child level left this texture behind the green panel.
+AntiPngButton:SetFrameLevel(NewLuckFrame:GetFrameLevel() + 101);
+AntiPngButton:EnableMouse(false);
+AntiPngButton.PointerTexture = AntiPngButton:CreateTexture(nil, "OVERLAY");
+AntiPngButton.PointerTexture:SetAllPoints(AntiPngButton);
+AntiPngButton.PointerTexture:SetTexture(VoidIcon);
 
 local AnimationGroup = AntiPngButton:CreateAnimationGroup()
 local Animation = AnimationGroup:CreateAnimation("Rotation")
@@ -227,7 +233,9 @@ local function Dream_OnNewLuckAddonEvent(Self, event, Packet, Msg, Type, Sender)
                 NewLuckItems[i] = { tonumber(TheArgs[1]), tonumber(TheArgs[2]) };
             end
 
-            AntiPngButton:SetSize(#NewLuckItems * 10, #NewLuckItems * 10);
+            local pointerSize = #NewLuckItems * 10;
+            AntiPngButton:SetSize(pointerSize, pointerSize);
+            AntiPngButton.PointerTexture:SetAllPoints(AntiPngButton);
 
             --开始布局 因为取数据比 OnShow 优先 所以先把布局弄好 才能显示
             NewLuckButtons = {};
