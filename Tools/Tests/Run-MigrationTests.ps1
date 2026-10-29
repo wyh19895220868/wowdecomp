@@ -25,5 +25,7 @@ try {
     & "$PSScriptRoot\Test-SparseItems.ps1"
     & powershell -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot\Test-NativeLifecycle.ps1"
     if ($LASTEXITCODE -ne 0) { throw 'Lifecycle regression failed' }
+    & powershell -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot\Test-NativeProtocolSync.ps1"
+    if ($LASTEXITCODE -ne 0) { throw 'Native protocol sync failed' }
     Write-Output 'All migration source/fixture checks passed; live game acceptance is separate.'
 } finally { Pop-Location }
