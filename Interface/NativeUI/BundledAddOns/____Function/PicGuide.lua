@@ -674,6 +674,7 @@ function HideNavBtnSubFrameListBtns()
 		NavBtnSubFrame.ListBtns[N].KillText = "";
 		NavBtnSubFrame.ListBtns[N].RewardText = "";
 		NavBtnSubFrame.ListBtns[N].Rewards = {};
+		NavBtnSubFrame.ListBtns[N].IsActivated = false;
 		NavBtnSubFrame.ListBtns[N]:SetID(0);
 		NavBtnSubFrame.ListBtns[N]:Hide();
 	end
@@ -1030,6 +1031,7 @@ local function Dream_OnPicGuideEvent(Self, event, Packet, Msg, Type, Sender)
 						NavBtnSubFrame.ListBtns[Index].ActBtn:Enable();
 					end
 					NavBtnSubFrame.ListBtns[Index].ActBtn:SetText((IsActPlayer == 1) and "已激活" or "|cFF006E00激活|r");
+					NavBtnSubFrame.ListBtns[Index].IsActivated = (IsActPlayer == 1);
 
 					if (IsActStat == 1) then
 						NavBtnSubFrame.ListBtns[Index].SmButton1:Show();
@@ -1045,7 +1047,7 @@ local function Dream_OnPicGuideEvent(Self, event, Packet, Msg, Type, Sender)
 			        NavBtnSubFrame.ListBtns[Index]:SetID(ItemId);
 					NavBtnSubFrame.ListBtns[Index].IconBtnCenter:Show();
 			        NavBtnSubFrame.ListBtns[Index].IconBtnCenter:SetNormalTexture(DreamGetItemIcon(ItemId));
-			        NavBtnSubFrame.ListBtns[Index].IconBtnCenter:GetNormalTexture():SetDesaturated(true);
+			        NavBtnSubFrame.ListBtns[Index].IconBtnCenter:GetNormalTexture():SetDesaturated(IsActPlayer ~= 1);
 			        NavBtnSubFrame.ListBtns[Index]:Show();
 				end
 			end
@@ -1070,7 +1072,8 @@ local function Dream_OnPicGuideEvent(Self, event, Packet, Msg, Type, Sender)
 			if (NavBtnSubFrame.ListBtns[N] and NavBtnSubFrame.ListBtns[N]:GetID() == ItemId) then
 				NavBtnSubFrame.ListBtns[N]:SetID(0);
 				NavBtnSubFrame.ListBtns[N].NormalTexture:SetTexture("Interface\\Icons\\CPic3");
-			    NavBtnSubFrame.ListBtns[N].IconBtnCenter:GetNormalTexture():SetDesaturated(true);
+			    NavBtnSubFrame.ListBtns[N].IsActivated = true;
+			    NavBtnSubFrame.ListBtns[N].IconBtnCenter:GetNormalTexture():SetDesaturated(false);
 			    NavBtnSubFrame.ListBtns[N].ActBtn:SetText("已激活");
 			    NavBtnSubFrame.ListBtns[N].ActBtn:Disable();
 			end
@@ -1254,7 +1257,7 @@ local function Dream_OnPicGuideEvent(Self, event, Packet, Msg, Type, Sender)
                 for i = 1, PageSize do
 				    if (NavBtnSubFrame.ListBtns[i]:IsEnabled()) then
 					    local KItemId = NavBtnSubFrame.ListBtns[i]:GetID();
-					    if (tonumber(ItemId) == KItemId) then
+					    if (tonumber(ItemId) == KItemId and not NavBtnSubFrame.ListBtns[i].IsActivated) then
 						    NavBtnSubFrame.ListBtns[i].IconBtnCenter:GetNormalTexture():SetDesaturated(true);
 						    NavBtnSubFrame.ListBtns[i].ActBtn:SetText("|cFF006E00激活|r");
 					    end
